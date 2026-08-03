@@ -1,0 +1,1 @@
+{"clients":["Tauri desktop","Next.js web"],"backend":"FastAPI Clean Architecture","data":["PostgreSQL with pgvector","Redis"],"workspace":"pnpm and Turborepo"}

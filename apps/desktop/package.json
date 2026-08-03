@@ -1,0 +1,1 @@
+{"name":"@forge/desktop","version":"0.1.0","private":true,"scripts":{"dev":"tauri dev","build":"tauri build","lint":"eslint src --max-warnings=0","typecheck":"tsc --noEmit"},"dependencies":{"@tauri-apps/api":"^2.8.0"},"devDependencies":{"@tauri-apps/cli":"^2.8.1","@types/node":"^24.3.1","eslint":"^9.35.0","typescript":"^5.9.2"}}
