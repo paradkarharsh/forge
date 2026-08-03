@@ -48,4 +48,15 @@ Agents must use project memory, cite affected files, and require approval before
 
 ## Current implementation status
 
-Milestone 0 project foundation is implemented. It provides the Turborepo workspace, Tauri and Next.js shells, a Clean Architecture FastAPI service, Dockerized PostgreSQL/pgvector and Redis, shared packages, quality tooling, CI, and setup documentation. No product features are implemented.
+Milestone 0 project foundation is implemented. It provides the Turborepo workspace, Tauri and Next.js shells, a Clean Architecture FastAPI service, Dockerized PostgreSQL/pgvector and Redis, shared packages, quality tooling, CI, and setup documentation.
+
+Milestone 1 authentication foundation is implemented in `services/api`:
+
+- Clean Architecture layering: `domain/` (errors, records, repository ports, security protocols), `application/` (auth, session, OAuth, workspace services), `infrastructure/` (SQLAlchemy adapters, security, audit, OAuth, cache), `presentation/http/` (routers, DI providers, response contracts).
+- Every endpoint responds with the global envelope from `presentation/http/contracts.py`; centralized exception handlers in `presentation/http/errors.py` map domain/validation/database errors to the same error contract.
+- Session lifecycle: refresh-token rotation with reuse detection, server-side revocation (logout current/all), expiration cleanup on a background task, throttled `last_active` updates.
+- Audit events record user, session, ip, user agent, reason, and a structured JSON payload.
+- Dependency injection is wired through FastAPI `Depends` chains in `presentation/http/dependencies.py`; no SQLAlchemy imports exist in the presentation layer outside that module.
+- Alembic runtime and migrations under `services/api/alembic/`; run with `FORGE_DATABASE_URL=... python -m alembic upgrade head`.
+
+Product features (indexer, memory, search, deployment, workspace UX) are not yet implemented.

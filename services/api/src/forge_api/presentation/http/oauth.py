@@ -1,16 +1,52 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from forge_api.application.auth.dtos import OAuthIdentity
+"""OAuth routes with state/PKCE/nonce support."""
+from fastapi import APIRouter, Depends, Query, Request, Response
+
 from forge_api.application.auth.oauth_service import OAuthService
-from forge_api.infrastructure.oauth import exchange_code
 from forge_api.infrastructure.settings import Settings, get_settings
-from forge_api.presentation.http.dependencies import get_session
-router=APIRouter(prefix="/oauth",tags=["oauth"])
+from forge_api.presentation.http.contracts import ok
+from forge_api.presentation.http.dependencies import (
+    client_device_name,
+    client_ip,
+    client_user_agent,
+    get_oauth_service,
+)
+
+router = APIRouter(prefix="/oauth", tags=["oauth"])
+
+
+@router.get("/{provider}/authorize")
+async def authorize(
+    provider: str,
+    oauth: OAuthService = Depends(get_oauth_service),
+):
+    result = await oauth.authorize_url(provider)
+    return ok(result)
+
+
 @router.get("/{provider}/callback")
-async def callback(provider: str, code: str=Query(min_length=1), redirect_uri: str=Query(min_length=1), db: AsyncSession=Depends(get_session), settings: Settings=Depends(get_settings)):
-    try: profile=await exchange_code(provider,code,redirect_uri,settings)
-    except (RuntimeError,ValueError) as error: raise HTTPException(503,"OAuth provider is not configured") from error
-    subject=str(profile.get("sub") or profile.get("id") or "")
-    if not subject: raise HTTPException(400,"OAuth provider response has no subject")
-    user=await OAuthService(db).resolve(OAuthIdentity(provider,subject,profile.get("email")))
-    await db.commit(); return {"user_id":str(user.id),"provider":provider}
+async def callback(
+    provider: str,
+    request: Request,
+    response: Response,
+    code: str = Query(min_length=1),
+    state: str = Query(min_length=1),
+    oauth: OAuthService = Depends(get_oauth_service),
+    settings: Settings = Depends(get_settings),
+):
+    pair = await oauth.callback(
+        provider,
+        code,
+        state,
+        ip_address=client_ip(request),
+        user_agent=client_user_agent(request),
+        device_name=client_device_name(request),
+    )
+    response.set_cookie(
+        "forge_refresh",
+        pair.refresh_token,
+        httponly=True,
+        secure=settings.environment != "development",
+        samesite="lax",
+        path="/v1/auth",
+    )
+    return ok({"access_token": pair.access_token, "token_type": pair.token_type})

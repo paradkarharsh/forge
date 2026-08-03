@@ -21,12 +21,18 @@
 - Keep domain/schema, lifecycle, caching, security, and production database concerns explicit.
 - Use PostgreSQL for persistence and Redis where low-latency cached state is appropriate.
 - Design for logs, metrics, alerts, and backups from the outset.
+- Decided (Milestone 1): repository port interfaces live in `domain/repositories.py`; SQLAlchemy adapters live in `infrastructure/*_repository.py`; application services in `application/`. Security primitives sit behind `domain/security.py` protocols. The presentation layer contains no SQLAlchemy logic.
+- Decided: dependency injection via FastAPI `Depends` chains rooted in `presentation/http/dependencies.py`; one shared DB session factory and one Redis client per app lifespan.
+- Decided: audit events are first-class records (`audit_events` table) capturing user, session, ip, user agent, reason, and a JSON payload.
 
 ## API conventions
 
-- Expose REST endpoints and WebSockets.
+- Expose REST endpoints and WebSockets under `/v1`.
 - Include authentication, pagination, consistent errors, SDK strategy, and lifecycle management.
-- Specific route names, schemas, authentication mechanism, and error envelope are not yet specified; define them before implementation rather than guessing.
+- Decided (Milestone 1): a global envelope for every endpoint. Success: `{"success": true, "data": <payload>, "meta": {}}`. Error: `{"success": false, "error": {"code", "message", "details"}}` with stable machine-readable codes (`authentication_error`, `authorization_error`, `validation_error`, `not_found`, `conflict`, `database_error`, `rate_limit_exceeded`, …).
+- Decided: bearer access tokens (JWT, 15 min) carry `sub` and `sid` (session id) claims; the httponly `forge_refresh` cookie on the `/v1/auth` path drives rotation. A revoked or expired server-side session invalidates the access token on the next request.
+- Decided: refresh tokens rotate on every use; presenting a consumed token revokes the whole token family (reuse detection).
+- Decided: OAuth authorize/callback endpoints use `state` + PKCE (S256) and a nonce for OIDC providers (Google); state/verifier/nonce transiently live in Redis.
 
 ## UX principles
 
