@@ -8,8 +8,8 @@ from forge_api.presentation.http.contracts import ok
 from forge_api.presentation.http.dependencies import (
     client_ip,
     client_user_agent,
-    current_claims,
     get_session_service,
+    validated_claims,
 )
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 @router.get("")
 async def list_sessions(
-    claims=Depends(current_claims),
+    claims=Depends(validated_claims),
     session_svc: SessionService = Depends(get_session_service),
 ):
     views = await session_svc.list_sessions(claims.user_id)
@@ -40,7 +40,7 @@ async def list_sessions(
 async def revoke_session(
     session_id: UUID,
     request: Request,
-    claims=Depends(current_claims),
+    claims=Depends(validated_claims),
     session_svc: SessionService = Depends(get_session_service),
 ):
     await session_svc.revoke(
@@ -54,7 +54,7 @@ async def revoke_session(
 @router.delete("", status_code=204)
 async def revoke_all(
     request: Request,
-    claims=Depends(current_claims),
+    claims=Depends(validated_claims),
     session_svc: SessionService = Depends(get_session_service),
 ):
     await session_svc.revoke_all(

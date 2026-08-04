@@ -6,22 +6,22 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-forge}
       POSTGRES_USER: ${POSTGRES_USER:-forge}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
-    ports: ["${POSTGRES_PORT:-5432}:5432"]
+    ports: ['${POSTGRES_PORT:-5432}:5432']
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01-pgvector.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      test: ['CMD-SHELL', 'pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB']
       interval: 10s
       timeout: 5s
       retries: 5
   redis:
     image: redis:7.4-alpine
-    command: ["redis-server", "--appendonly", "yes"]
-    ports: ["${REDIS_PORT:-6379}:6379"]
-    volumes: ["redis-data:/data"]
+    command: ['redis-server', '--appendonly', 'yes']
+    ports: ['${REDIS_PORT:-6379}:6379']
+    volumes: ['redis-data:/data']
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -31,7 +31,8 @@ services:
       FORGE_ENV: ${FORGE_ENV:-development}
       FORGE_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-forge}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-forge}
       FORGE_REDIS_URL: redis://redis:6379/0
-    ports: ["8000:8000"]
+      FORGE_JWT_SECRET: ${FORGE_JWT_SECRET:?Set FORGE_JWT_SECRET in .env}
+    ports: ['8000:8000']
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }

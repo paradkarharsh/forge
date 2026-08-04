@@ -70,6 +70,11 @@ class TestAuditEventTypes:
             "oauth.profile_invalid",
             "workspace.created",
             "workspace.renamed",
+            "workspace.deleted",
+            "workspace.updated",
+            "workspace.member_added",
+            "workspace.member_removed",
+            "workspace.member_role_changed",
         }
         actual = {member.value for member in AuditEventType}
         assert expected == actual

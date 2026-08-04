@@ -62,6 +62,7 @@ class TestDomainRecords:
         record = WorkspaceRecord(
             id=uuid4(),
             name="test",
+            slug="test",
             created_at=datetime.now(UTC),
             deleted_at=None,
         )

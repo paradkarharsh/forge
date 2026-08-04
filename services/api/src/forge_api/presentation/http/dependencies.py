@@ -65,6 +65,7 @@ def _session_factory(request: Request) -> async_sessionmaker:
 async def get_session(request: Request) -> AsyncGenerator[AsyncSession, None]:
     async with _session_factory(request)() as session:
         yield session
+        await session.commit()
 
 
 def get_cache(request: Request) -> Redis:
@@ -93,6 +94,24 @@ def current_claims(
         return tokens.decode_access_token(token.credentials)
     except Exception as exc:
         raise AuthenticationError("Invalid access token") from exc
+
+
+async def validated_claims(
+    claims: AccessClaims = Depends(current_claims),
+    db: AsyncSession = Depends(get_session),
+) -> AccessClaims:
+    """Decode the bearer token AND verify the session is still active."""
+    from datetime import UTC, datetime
+
+    from forge_api.infrastructure.session_repository import SqlSessionRepository
+
+    repo = SqlSessionRepository(db)
+    session = await repo.get(claims.session_id, user_id=claims.user_id)
+    if not session or session.revoked_at is not None:
+        raise AuthenticationError("Session has been revoked")
+    if session.expires_at < datetime.now(UTC):
+        raise AuthenticationError("Session has expired")
+    return claims
 
 
 def current_user_id(claims: AccessClaims = Depends(current_claims)) -> str:

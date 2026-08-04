@@ -284,6 +284,9 @@ class FakeOAuthIdentityRepository:
         return record
 
 
+_SENTINEL = object()
+
+
 class FakeWorkspaceRepository:
     def __init__(self) -> None:
         self._workspaces: dict[UUID, WorkspaceRecord] = {}
@@ -306,6 +309,12 @@ class FakeWorkspaceRepository:
             return w
         return None
 
+    async def get_by_slug(self, slug: str) -> WorkspaceRecord | None:
+        for w in self._workspaces.values():
+            if w.slug == slug.lower() and w.deleted_at is None:
+                return w
+        return None
+
     async def get_membership(
         self, workspace_id: UUID, user_id: UUID
     ) -> MembershipRecord | None:
@@ -314,12 +323,19 @@ class FakeWorkspaceRepository:
                 return m
         return None
 
-    async def create(self, *, name: str) -> WorkspaceRecord:
+    async def list_members(self, workspace_id: UUID) -> list[MembershipRecord]:
+        return [m for m in self._memberships if m.workspace_id == workspace_id]
+
+    async def create(
+        self, *, name: str, slug: str, description: str | None = None
+    ) -> WorkspaceRecord:
         record = WorkspaceRecord(
             id=uuid4(),
             name=name,
+            slug=slug.lower(),
             created_at=datetime.now(UTC),
             deleted_at=None,
+            description=description,
         )
         self._workspaces[record.id] = record
         return record
@@ -336,15 +352,69 @@ class FakeWorkspaceRepository:
             )
         )
 
+    async def remove_member(self, workspace_id: UUID, user_id: UUID) -> bool:
+        for i, m in enumerate(self._memberships):
+            if m.workspace_id == workspace_id and m.user_id == user_id:
+                self._memberships.pop(i)
+                return True
+        return False
+
+    async def update_member_role(
+        self, workspace_id: UUID, user_id: UUID, role: WorkspaceRole
+    ) -> bool:
+        for i, m in enumerate(self._memberships):
+            if m.workspace_id == workspace_id and m.user_id == user_id:
+                self._memberships[i] = MembershipRecord(
+                    workspace_id=m.workspace_id,
+                    user_id=m.user_id,
+                    role=role,
+                    created_at=m.created_at,
+                )
+                return True
+        return False
+
     async def rename(self, workspace_id: UUID, name: str) -> WorkspaceRecord | None:
         w = self._workspaces.get(workspace_id)
         if not w or w.deleted_at:
             return None
         updated = WorkspaceRecord(
-            id=w.id, name=name, created_at=w.created_at, deleted_at=None
+            id=w.id, name=name, slug=w.slug, created_at=w.created_at,
+            deleted_at=None, description=w.description,
         )
         self._workspaces[workspace_id] = updated
         return updated
+
+    async def update(
+        self,
+        workspace_id: UUID,
+        *,
+        name: str | None = None,
+        slug: str | None = None,
+        description: str | None = _SENTINEL,
+    ) -> WorkspaceRecord | None:
+        w = self._workspaces.get(workspace_id)
+        if not w or w.deleted_at:
+            return None
+        updated = WorkspaceRecord(
+            id=w.id,
+            name=name if name is not None else w.name,
+            slug=slug.lower() if slug is not None else w.slug,
+            created_at=w.created_at,
+            deleted_at=None,
+            description=description if description is not _SENTINEL else w.description,
+        )
+        self._workspaces[workspace_id] = updated
+        return updated
+
+    async def soft_delete(self, workspace_id: UUID) -> bool:
+        w = self._workspaces.get(workspace_id)
+        if not w or w.deleted_at:
+            return False
+        self._workspaces[workspace_id] = WorkspaceRecord(
+            id=w.id, name=w.name, slug=w.slug, created_at=w.created_at,
+            deleted_at=datetime.now(UTC), description=w.description,
+        )
+        return True
 
 
 # ─── Fake audit logger ──────────────────────────────────────────────

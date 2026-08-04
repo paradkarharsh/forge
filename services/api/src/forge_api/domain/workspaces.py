@@ -10,8 +10,10 @@ from forge_api.domain.auth import WorkspaceRole
 class WorkspaceRecord:
     id: UUID
     name: str
+    slug: str
     created_at: datetime
     deleted_at: datetime | None
+    description: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

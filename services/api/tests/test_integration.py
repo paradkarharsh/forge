@@ -115,6 +115,17 @@ def integration_client(forge_test_database) -> TestClient:
         yield client
 
 
+async def _user_id_by_email(email: str) -> str:
+    """Resolve a user id from the integration database by email."""
+    conn = await asyncpg.connect(dsn=_test_db_url().replace("+asyncpg", ""))
+    try:
+        row = await conn.fetchrow("SELECT id FROM users WHERE email = $1", email.lower())
+        assert row is not None, f"user {email} not found"
+        return str(row["id"])
+    finally:
+        await conn.close()
+
+
 def _register(client: TestClient, email: str, password: str = "supersecure12"):
     resp = client.post(
         "/v1/auth/register",
@@ -155,7 +166,7 @@ class TestAuthFlow:
             headers={"Host": "localhost"},
         )
         assert resp.status_code == 409
-        assert resp.json()["error"]["code"] == "conflict"
+        assert resp.json()["error"]["code"] == "email_taken"
 
 
 class TestSessionLifecycleHttp:
@@ -209,3 +220,177 @@ class TestSessionLifecycleHttp:
         )
         assert resp.status_code == 401
         assert resp.json()["error"]["message"] == "Refresh token rejected"
+
+
+class TestWorkspaceTenancyHttp:
+    """End-to-end workspace CRUD with membership management."""
+
+    def test_create_and_get_workspace(self, integration_client) -> None:
+        client = integration_client
+        token = _register(client, "ws-create@example.com")
+        headers = {"Host": "localhost", "Authorization": f"Bearer {token}"}
+
+        # Create workspace
+        resp = client.post(
+            "/v1/workspaces",
+            json={"name": "Test Workspace", "slug": "test-ws", "description": "My desc"},
+            headers=headers,
+        )
+        assert resp.status_code == 201
+        data = resp.json()["data"]
+        assert data["name"] == "Test Workspace"
+        assert data["slug"] == "test-ws"
+        assert data["description"] == "My desc"
+        assert data["role"] == "owner"
+        ws_id = data["id"]
+
+        # Get by ID
+        resp = client.get(f"/v1/workspaces/{ws_id}", headers=headers)
+        assert resp.status_code == 200
+        assert resp.json()["data"]["slug"] == "test-ws"
+
+        # Get by slug
+        resp = client.get("/v1/workspaces/by-slug/test-ws", headers=headers)
+        assert resp.status_code == 200
+        assert resp.json()["data"]["id"] == ws_id
+
+    def test_list_workspaces(self, integration_client) -> None:
+        client = integration_client
+        token = _register(client, "ws-list@example.com")
+        headers = {"Host": "localhost", "Authorization": f"Bearer {token}"}
+
+        client.post(
+            "/v1/workspaces",
+            json={"name": "WS A", "slug": "ws-list-a"},
+            headers=headers,
+        )
+        client.post(
+            "/v1/workspaces",
+            json={"name": "WS B", "slug": "ws-list-b"},
+            headers=headers,
+        )
+
+        resp = client.get("/v1/workspaces", headers=headers)
+        assert resp.status_code == 200
+        assert len(resp.json()["data"]) >= 2
+
+    def test_update_workspace(self, integration_client) -> None:
+        client = integration_client
+        token = _register(client, "ws-update@example.com")
+        headers = {"Host": "localhost", "Authorization": f"Bearer {token}"}
+
+        create = client.post(
+            "/v1/workspaces",
+            json={"name": "Before", "slug": "ws-update-test"},
+            headers=headers,
+        )
+        ws_id = create.json()["data"]["id"]
+
+        resp = client.patch(
+            f"/v1/workspaces/{ws_id}",
+            json={"name": "After", "description": "Updated"},
+            headers=headers,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["data"]["name"] == "After"
+        assert resp.json()["data"]["description"] == "Updated"
+
+    def test_delete_workspace(self, integration_client) -> None:
+        client = integration_client
+        token = _register(client, "ws-delete@example.com")
+        headers = {"Host": "localhost", "Authorization": f"Bearer {token}"}
+
+        create = client.post(
+            "/v1/workspaces",
+            json={"name": "To Delete", "slug": "ws-delete-test"},
+            headers=headers,
+        )
+        ws_id = create.json()["data"]["id"]
+
+        resp = client.delete(f"/v1/workspaces/{ws_id}", headers=headers)
+        assert resp.status_code == 204
+
+        # Should be gone
+        resp = client.get(f"/v1/workspaces/{ws_id}", headers=headers)
+        assert resp.status_code == 404
+
+    def test_duplicate_slug_returns_conflict(self, integration_client) -> None:
+        client = integration_client
+        token = _register(client, "ws-slug-dupe@example.com")
+        headers = {"Host": "localhost", "Authorization": f"Bearer {token}"}
+
+        client.post(
+            "/v1/workspaces",
+            json={"name": "First", "slug": "unique-slug-test"},
+            headers=headers,
+        )
+        resp = client.post(
+            "/v1/workspaces",
+            json={"name": "Second", "slug": "unique-slug-test"},
+            headers=headers,
+        )
+        assert resp.status_code == 409
+        assert resp.json()["error"]["code"] == "slug_taken"
+
+    def test_membership_crud(self, integration_client) -> None:
+        client = integration_client
+        owner_token = _register(client, "ws-owner-mem@example.com")
+        member_token = _register(client, "ws-member-mem@example.com")
+        owner_headers = {"Host": "localhost", "Authorization": f"Bearer {owner_token}"}
+        member_headers = {"Host": "localhost", "Authorization": f"Bearer {member_token}"}
+
+        # Create workspace as owner.
+        create = client.post(
+            "/v1/workspaces",
+            json={"name": "Members Test", "slug": "members-test"},
+            headers=owner_headers,
+        )
+        assert create.status_code == 201
+        ws_id = create.json()["data"]["id"]
+
+        # Member cannot see the workspace yet.
+        resp = client.get("/v1/workspaces", headers=member_headers)
+        assert all(w["id"] != ws_id for w in resp.json()["data"])
+
+        # Resolve the member's user id from the database.
+        member_id = asyncio.run(_user_id_by_email("ws-member-mem@example.com"))
+
+        # Owner adds the member.
+        resp = client.post(
+            f"/v1/workspaces/{ws_id}/members",
+            json={"user_id": member_id, "role": "member"},
+            headers=owner_headers,
+        )
+        assert resp.status_code == 201
+
+        # Owner now sees two members.
+        resp = client.get(f"/v1/workspaces/{ws_id}/members", headers=owner_headers)
+        assert resp.status_code == 200
+        assert len(resp.json()["data"]) == 2
+
+        # Member can now see the workspace.
+        resp = client.get("/v1/workspaces", headers=member_headers)
+        assert any(w["id"] == ws_id for w in resp.json()["data"])
+
+        # Owner changes the member's role to admin.
+        resp = client.patch(
+            f"/v1/workspaces/{ws_id}/members/{member_id}",
+            json={"role": "admin"},
+            headers=owner_headers,
+        )
+        assert resp.status_code == 200
+
+        # Owner removes the member.
+        resp = client.delete(
+            f"/v1/workspaces/{ws_id}/members/{member_id}", headers=owner_headers
+        )
+        assert resp.status_code == 204
+
+        # Only the owner remains.
+        resp = client.get(f"/v1/workspaces/{ws_id}/members", headers=owner_headers)
+        assert resp.status_code == 200
+        assert len(resp.json()["data"]) == 1
+
+        # Member can no longer see the workspace.
+        resp = client.get("/v1/workspaces", headers=member_headers)
+        assert all(w["id"] != ws_id for w in resp.json()["data"])

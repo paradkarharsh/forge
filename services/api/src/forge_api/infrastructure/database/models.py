@@ -81,6 +81,8 @@ class WorkspaceModel(Base):
     __tablename__ = "workspaces"
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     name: Mapped[str] = mapped_column(String(120))
+    slug: Mapped[str] = mapped_column(String(140), unique=True, index=True)
+    description: Mapped[str | None] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

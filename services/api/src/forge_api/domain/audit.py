@@ -28,6 +28,11 @@ class AuditEventType(StrEnum):
     OAUTH_PROFILE_INVALID = "oauth.profile_invalid"
     WORKSPACE_CREATED = "workspace.created"
     WORKSPACE_RENAMED = "workspace.renamed"
+    WORKSPACE_DELETED = "workspace.deleted"
+    WORKSPACE_UPDATED = "workspace.updated"
+    WORKSPACE_MEMBER_ADDED = "workspace.member_added"
+    WORKSPACE_MEMBER_REMOVED = "workspace.member_removed"
+    WORKSPACE_MEMBER_ROLE_CHANGED = "workspace.member_role_changed"
 
 
 @dataclass(frozen=True, slots=True)
