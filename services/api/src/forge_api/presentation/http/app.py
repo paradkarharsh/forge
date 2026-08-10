@@ -20,6 +20,7 @@ from forge_api.presentation.http.auth import router as auth_router
 from forge_api.presentation.http.errors import register_exception_handlers
 from forge_api.presentation.http.health import router as health_router
 from forge_api.presentation.http.oauth import router as oauth_router
+from forge_api.presentation.http.repository import router as repository_router
 from forge_api.presentation.http.security_middleware import (
     RateLimitMiddleware,
     SecurityHeadersMiddleware,
@@ -122,6 +123,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(auth_router, prefix="/v1")
     app.include_router(workspace_router, prefix="/v1")
+    app.include_router(repository_router, prefix="/v1")
     app.include_router(oauth_router, prefix="/v1")
     app.include_router(sessions_router, prefix="/v1")
 

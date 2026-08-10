@@ -15,6 +15,16 @@ import pytest
 from fastapi.testclient import TestClient
 
 from forge_api.domain.auth import WorkspaceRole
+from forge_api.domain.repository import (
+    BranchRecord,
+    CloneStatus,
+    RepositoryEventRecord,
+    RepositoryRecord,
+    RepositoryVisibility,
+    SyncJobRecord,
+    SyncJobStatus,
+    SyncStatus,
+)
 from forge_api.domain.security import AccessClaims
 from forge_api.domain.sessions import SessionRecord
 from forge_api.domain.users import OAuthIdentityRecord, UserRecord
@@ -433,6 +443,308 @@ class FakeAuditLogger:
         self.events.append({"event": event_type, **kwargs})
 
 
+@pytest.fixture
+def test_client(monkeypatch) -> TestClient:
+    """Create a TestClient with env vars set so Settings can load."""
+    monkeypatch.setenv(
+        "FORGE_DATABASE_URL",
+        "postgresql+asyncpg://forge:secret@localhost:5432/forge",
+    )
+    monkeypatch.setenv("FORGE_REDIS_URL", "redis://localhost:6379/0")
+    monkeypatch.setenv(
+        "FORGE_JWT_SECRET",
+        "test-secret-that-is-at-least-32-chars-long-for-security",
+    )
+    get_settings.cache_clear()
+    from forge_api.presentation.http.app import create_app
+
+    return TestClient(create_app(), raise_server_exceptions=False)
+
+
+# ─── Fake repository domain repositories ────────────────────────────
+
+
+class FakeRepositoryRepository:
+    def __init__(self) -> None:
+        self._repos: dict[UUID, RepositoryRecord] = {}
+
+    async def get(self, repository_id: UUID) -> RepositoryRecord | None:
+        r = self._repos.get(repository_id)
+        if r and r.deleted_at is None:
+            return r
+        return None
+
+    async def get_by_workspace(
+        self,
+        workspace_id: UUID,
+        *,
+        include_archived: bool = False,
+        include_deleted: bool = False,
+    ) -> list[RepositoryRecord]:
+        results = []
+        for r in self._repos.values():
+            if r.workspace_id != workspace_id:
+                continue
+            if not include_deleted and r.deleted_at:
+                continue
+            if not include_archived and r.archived_at:
+                continue
+            results.append(r)
+        return sorted(results, key=lambda x: x.created_at, reverse=True)
+
+    async def create(
+        self,
+        *,
+        workspace_id: UUID,
+        name: str,
+        owner: str,
+        provider: str,
+        remote_url: str | None = None,
+        local_path: str | None = None,
+        default_branch: str | None = None,
+        clone_status: str = "pending",
+        sync_status: str = "idle",
+        visibility: str = "private",
+        description: str | None = None,
+    ) -> RepositoryRecord:
+        now = datetime.now(UTC)
+        record = RepositoryRecord(
+            id=uuid4(),
+            workspace_id=workspace_id,
+            name=name,
+            owner=owner,
+            provider=provider,
+            remote_url=remote_url,
+            local_path=local_path,
+            default_branch=default_branch,
+            current_branch=None,
+            clone_status=CloneStatus(clone_status),
+            sync_status=SyncStatus(sync_status),
+            visibility=RepositoryVisibility(visibility),
+            description=description,
+            size_bytes=None,
+            last_commit_hash=None,
+            last_synced_at=None,
+            created_at=now,
+            updated_at=now,
+            archived_at=None,
+            deleted_at=None,
+        )
+        self._repos[record.id] = record
+        return record
+
+    async def update(
+        self,
+        repository_id: UUID,
+        **kwargs,
+    ) -> RepositoryRecord | None:
+        r = self._repos.get(repository_id)
+        if not r or r.deleted_at:
+            return None
+        fields = {
+            "name": r.name,
+            "description": r.description,
+            "default_branch": r.default_branch,
+            "current_branch": r.current_branch,
+            "clone_status": r.clone_status,
+            "sync_status": r.sync_status,
+            "visibility": r.visibility,
+            "local_path": r.local_path,
+            "size_bytes": r.size_bytes,
+            "last_commit_hash": r.last_commit_hash,
+            "last_synced_at": r.last_synced_at,
+        }
+        for k, v in kwargs.items():
+            if k in fields:
+                if k == "clone_status" and isinstance(v, str):
+                    v = CloneStatus(v)
+                elif k == "sync_status" and isinstance(v, str):
+                    v = SyncStatus(v)
+                elif k == "visibility" and isinstance(v, str):
+                    v = RepositoryVisibility(v)
+                fields[k] = v
+        updated = RepositoryRecord(
+            id=r.id,
+            workspace_id=r.workspace_id,
+            owner=r.owner,
+            provider=r.provider,
+            remote_url=r.remote_url,
+            created_at=r.created_at,
+            updated_at=datetime.now(UTC),
+            archived_at=r.archived_at,
+            deleted_at=r.deleted_at,
+            **fields,
+        )
+        self._repos[repository_id] = updated
+        return updated
+
+    async def soft_delete(self, repository_id: UUID) -> bool:
+        r = self._repos.get(repository_id)
+        if not r or r.deleted_at:
+            return False
+        self._repos[repository_id] = RepositoryRecord(
+            id=r.id, workspace_id=r.workspace_id, name=r.name, owner=r.owner,
+            provider=r.provider, remote_url=r.remote_url, local_path=r.local_path,
+            default_branch=r.default_branch, current_branch=r.current_branch,
+            clone_status=r.clone_status, sync_status=r.sync_status,
+            visibility=r.visibility, description=r.description,
+            size_bytes=r.size_bytes, last_commit_hash=r.last_commit_hash,
+            last_synced_at=r.last_synced_at, created_at=r.created_at,
+            updated_at=datetime.now(UTC), archived_at=r.archived_at,
+            deleted_at=datetime.now(UTC),
+        )
+        return True
+
+    async def archive(self, repository_id: UUID) -> bool:
+        r = self._repos.get(repository_id)
+        if not r or r.deleted_at or r.archived_at:
+            return False
+        self._repos[repository_id] = RepositoryRecord(
+            id=r.id, workspace_id=r.workspace_id, name=r.name, owner=r.owner,
+            provider=r.provider, remote_url=r.remote_url, local_path=r.local_path,
+            default_branch=r.default_branch, current_branch=r.current_branch,
+            clone_status=r.clone_status, sync_status=r.sync_status,
+            visibility=r.visibility, description=r.description,
+            size_bytes=r.size_bytes, last_commit_hash=r.last_commit_hash,
+            last_synced_at=r.last_synced_at, created_at=r.created_at,
+            updated_at=datetime.now(UTC), archived_at=datetime.now(UTC),
+            deleted_at=None,
+        )
+        return True
+
+    async def restore(self, repository_id: UUID) -> RepositoryRecord | None:
+        r = self._repos.get(repository_id)
+        if not r:
+            return None
+        restored = RepositoryRecord(
+            id=r.id, workspace_id=r.workspace_id, name=r.name, owner=r.owner,
+            provider=r.provider, remote_url=r.remote_url, local_path=r.local_path,
+            default_branch=r.default_branch, current_branch=r.current_branch,
+            clone_status=r.clone_status, sync_status=r.sync_status,
+            visibility=r.visibility, description=r.description,
+            size_bytes=r.size_bytes, last_commit_hash=r.last_commit_hash,
+            last_synced_at=r.last_synced_at, created_at=r.created_at,
+            updated_at=datetime.now(UTC), archived_at=None, deleted_at=None,
+        )
+        self._repos[repository_id] = restored
+        return restored
+
+
+class FakeRepositoryBranchRepository:
+    def __init__(self) -> None:
+        self._branches: list[BranchRecord] = []
+
+    async def list_by_repository(self, repository_id: UUID) -> list[BranchRecord]:
+        return sorted(
+            [b for b in self._branches if b.repository_id == repository_id],
+            key=lambda b: b.name,
+        )
+
+    async def upsert(
+        self,
+        *,
+        repository_id: UUID,
+        name: str,
+        commit_hash: str | None = None,
+        is_default: bool = False,
+        is_protected: bool = False,
+    ) -> BranchRecord:
+        for i, b in enumerate(self._branches):
+            if b.repository_id == repository_id and b.name == name:
+                updated = BranchRecord(
+                    id=b.id, repository_id=repository_id, name=name,
+                    commit_hash=commit_hash, is_default=is_default,
+                    is_protected=is_protected, created_at=b.created_at,
+                )
+                self._branches[i] = updated
+                return updated
+        record = BranchRecord(
+            id=uuid4(), repository_id=repository_id, name=name,
+            commit_hash=commit_hash, is_default=is_default,
+            is_protected=is_protected, created_at=datetime.now(UTC),
+        )
+        self._branches.append(record)
+        return record
+
+    async def delete_by_repository(self, repository_id: UUID) -> int:
+        before = len(self._branches)
+        self._branches = [b for b in self._branches if b.repository_id != repository_id]
+        return before - len(self._branches)
+
+
+class FakeRepositorySyncJobRepository:
+    def __init__(self) -> None:
+        self._jobs: dict[UUID, SyncJobRecord] = {}
+
+    async def get(self, job_id: UUID) -> SyncJobRecord | None:
+        return self._jobs.get(job_id)
+
+    async def list_by_repository(
+        self, repository_id: UUID, *, job_type: str | None = None
+    ) -> list[SyncJobRecord]:
+        results = [
+            j for j in self._jobs.values()
+            if j.repository_id == repository_id
+            and (job_type is None or j.job_type == job_type)
+        ]
+        return sorted(results, key=lambda j: j.created_at, reverse=True)
+
+    async def create(
+        self, *, repository_id: UUID, job_type: str, status: str = "pending",
+    ) -> SyncJobRecord:
+        record = SyncJobRecord(
+            id=uuid4(), repository_id=repository_id, job_type=job_type,
+            status=SyncJobStatus(status), started_at=None, completed_at=None,
+            error_message=None, created_at=datetime.now(UTC),
+        )
+        self._jobs[record.id] = record
+        return record
+
+    async def update_status(
+        self, job_id: UUID, *, status: str, error_message: str | None = None,
+    ) -> SyncJobRecord | None:
+        j = self._jobs.get(job_id)
+        if not j:
+            return None
+        now = datetime.now(UTC)
+        updated = SyncJobRecord(
+            id=j.id, repository_id=j.repository_id, job_type=j.job_type,
+            status=SyncJobStatus(status),
+            started_at=now if status == "running" and not j.started_at else j.started_at,
+            completed_at=now if status in ("completed", "failed") else j.completed_at,
+            error_message=error_message if error_message is not None else j.error_message,
+            created_at=j.created_at,
+        )
+        self._jobs[job_id] = updated
+        return updated
+
+
+class FakeRepositoryEventRepository:
+    def __init__(self) -> None:
+        self._events: list[RepositoryEventRecord] = []
+
+    async def list_by_repository(
+        self, repository_id: UUID, *, limit: int = 50
+    ) -> list[RepositoryEventRecord]:
+        filtered = [e for e in self._events if e.repository_id == repository_id]
+        return sorted(filtered, key=lambda e: e.created_at, reverse=True)[:limit]
+
+    async def create(
+        self,
+        *,
+        repository_id: UUID,
+        event_type: str,
+        actor_id: UUID | None = None,
+        payload: dict | None = None,
+    ) -> RepositoryEventRecord:
+        record = RepositoryEventRecord(
+            id=uuid4(), repository_id=repository_id, event_type=event_type,
+            actor_id=actor_id, payload=payload, created_at=datetime.now(UTC),
+        )
+        self._events.append(record)
+        return record
+
+
 # ─── Fixtures ───────────────────────────────────────────────────────
 
 
@@ -477,18 +789,20 @@ def fake_audit() -> FakeAuditLogger:
 
 
 @pytest.fixture
-def test_client(monkeypatch) -> TestClient:
-    """Create a TestClient with env vars set so Settings can load."""
-    monkeypatch.setenv(
-        "FORGE_DATABASE_URL",
-        "postgresql+asyncpg://forge:secret@localhost:5432/forge",
-    )
-    monkeypatch.setenv("FORGE_REDIS_URL", "redis://localhost:6379/0")
-    monkeypatch.setenv(
-        "FORGE_JWT_SECRET",
-        "test-secret-that-is-at-least-32-chars-long-for-security",
-    )
-    get_settings.cache_clear()
-    from forge_api.presentation.http.app import create_app
+def fake_repositories() -> FakeRepositoryRepository:
+    return FakeRepositoryRepository()
 
-    return TestClient(create_app(), raise_server_exceptions=False)
+
+@pytest.fixture
+def fake_branches() -> FakeRepositoryBranchRepository:
+    return FakeRepositoryBranchRepository()
+
+
+@pytest.fixture
+def fake_sync_jobs() -> FakeRepositorySyncJobRepository:
+    return FakeRepositorySyncJobRepository()
+
+
+@pytest.fixture
+def fake_repo_events() -> FakeRepositoryEventRepository:
+    return FakeRepositoryEventRepository()

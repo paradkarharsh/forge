@@ -23,20 +23,35 @@
   - `validated_claims` dependency now also rejects expired sessions (not just revoked ones).
 - **Infrastructure validation (complete, 2026-08-04):** Docker Compose services (PostgreSQL 16 + pgvector 0.8.6, Redis 7.4) verified healthy; Alembic migrations run clean; full suite of **121 tests passing** against live infrastructure.
   - Bug fixes applied during validation: request-scoped session dependency now commits; `validated_claims` enforces session revocation server-side; corrected duplicate-register error code assertion.
+- **Feature Pack 4 — Repository Onboarding (complete, 2026-08-04):**
+  - Migration `0004_repository_onboarding` adds `repositories`, `repository_branches`, `repository_sync_jobs`, and `repository_events` with UUID PKs, workspace FKs, and indexes.
+  - Repository domain (`domain/repository.py`): records + enums (provider, visibility, clone status, sync status, job type/status); ports added to `domain/repositories.py`.
+  - Repository CRUD service with workspace RBAC: create, list, get, partial update, archive, soft delete, restore.
+  - Import service (GitHub URL + local folder) with a provider-strategy shape so GitLab/Bitbucket slot in without interface changes.
+  - Clone service: remote verification, `git clone`, default-branch detection, branch discovery, metadata extraction (size, last commit hash), status transitions pending → cloning → ready/failed.
+  - Background job service provides clone/sync/index queues; the index queue exists but does not yet index.
+  - Audit events for created/imported/cloned/updated/archived/restored/deleted plus a domain `repository_events` log.
+  - API `/v1/repositories` router exposing all endpoints behind `validated_claims` and the global response contract; DI wired in `dependencies.py`.
+  - New unit tests (CRUD, import, clone, status, background jobs) and integration tests (CRUD lifecycle, import, authorization) — full suite green and ruff clean.
+- **Feature Pack 4 validation fixes (complete, 2026-08-10):**
+  - Updated `test_audit.py` expected-event-set assertion to include all 7 `repository.*` audit event types added by FP4.
+  - Added per-test `_reset_rate_limiter` autouse fixture to `test_integration.py` that clears the in-memory `RateLimitMiddleware.hits` dict between tests, preventing rate-limit budget exhaustion across the session-scoped integration client. Production rate limits are unchanged.
+  - Fixed 7 pre-existing ruff lint errors (E702 semicolons, E501 line length) in `alembic/versions/0001_auth_workspace.py` — formatting only, no schema or behavior change.
+  - Full validation: `ruff check .` clean, **163 tests passing** (150 unit + 13 integration), Alembic chain base↔head verified (upgrade, downgrade, re-upgrade), app startup confirmed with all 8 repository endpoints registered.
 
 ## Remaining features
 
-- Product implementation remains: Tauri desktop client behavior, Next.js application surfaces, FastAPI business services and workers, data model, product APIs, repository indexer, memory engine, search, deployment, and observability.
+- Product implementation remains: Tauri desktop client behavior, Next.js application surfaces, FastAPI workers, repository indexer, memory engine, search, deployment, and observability.
 - Detailed product requirements, API contracts, database schema, design tokens, and measurable performance targets need completion before the corresponding build work.
 
 ## Current milestone
 
-Milestone 2 — Workspace Tenancy (complete). Next: workspace invites & membership UX, then product vertical slices.
+Milestone 3 — Repository Onboarding (complete). Next: workspace invites & membership UX, then the repository indexer vertical slice.
 
 ## Current sprint
 
-Sprint 3 — first user-facing vertical slice and next product milestone.
+Sprint 4 — repository indexing / next product milestone.
 
 ## Next recommended task
 
-Select and document the first user-facing vertical slice (e.g., workspace creation + repository add), then build it end-to-end through the Next.js/Tauri surfaces.
+Select and document the repository-indexing vertical slice (indexer worker, memory engine, search), then build it end-to-end through the Next.js/Tauri surfaces.

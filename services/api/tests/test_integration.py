@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 
 from alembic import command
 from forge_api.infrastructure.settings import get_settings
+from forge_api.presentation.http.security_middleware import RateLimitMiddleware
 
 PG_HOST = os.getenv("TEST_PG_HOST", "localhost")
 PG_PORT = os.getenv("TEST_PG_PORT", "5432")
@@ -113,6 +114,24 @@ def integration_client(forge_test_database) -> TestClient:
     app = create_app()
     with TestClient(app) as client:
         yield client
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter(integration_client: TestClient) -> None:
+    """Clear the in-memory rate limiter between tests.
+
+    The ``RateLimitMiddleware`` accumulates request counts across the
+    session-scoped ``integration_client``.  Without a reset, later tests
+    can be denied with 429 depending on execution order — making the suite
+    non-deterministic.  This fixture walks the middleware stack, finds the
+    limiter, and empties its hit counter before every test.
+    """
+    mw = integration_client.app.middleware_stack
+    while mw is not None:
+        if isinstance(mw, RateLimitMiddleware):
+            mw.hits.clear()
+            return
+        mw = getattr(mw, "app", None)
 
 
 async def _user_id_by_email(email: str) -> str:
@@ -394,3 +413,171 @@ class TestWorkspaceTenancyHttp:
         # Member can no longer see the workspace.
         resp = client.get("/v1/workspaces", headers=member_headers)
         assert all(w["id"] != ws_id for w in resp.json()["data"])
+
+
+def _create_workspace(client, headers, slug: str) -> str:
+    resp = client.post(
+        "/v1/workspaces",
+        json={"name": "Repo WS", "slug": slug},
+        headers=headers,
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["data"]["id"]
+
+
+class TestRepositoryTenancyHttp:
+    """End-to-end repository CRUD, import, archive, and restore."""
+
+    def test_repository_crud_lifecycle(self, integration_client) -> None:
+        client = integration_client
+        token = _register(client, "repo-crud@example.com")
+        headers = {"Host": "localhost", "Authorization": f"Bearer {token}"}
+        ws_id = _create_workspace(client, headers, "repo-crud-ws")
+
+        # Create
+        resp = client.post(
+            "/v1/repositories",
+            json={
+                "workspace_id": ws_id,
+                "name": "widget",
+                "owner": "alice",
+                "provider": "github",
+                "remote_url": "https://github.com/alice/widget",
+            },
+            headers=headers,
+        )
+        assert resp.status_code == 201, resp.text
+        data = resp.json()["data"]
+        assert data["name"] == "widget"
+        assert data["provider"] == "github"
+        assert data["clone_status"] == "pending"
+        repo_id = data["id"]
+
+        # List
+        resp = client.get(f"/v1/repositories?workspace_id={ws_id}", headers=headers)
+        assert resp.status_code == 200
+        assert len(resp.json()["data"]) == 1
+
+        # Get
+        resp = client.get(f"/v1/repositories/{repo_id}", headers=headers)
+        assert resp.status_code == 200
+        assert resp.json()["data"]["id"] == repo_id
+
+        # Update
+        resp = client.patch(
+            f"/v1/repositories/{repo_id}",
+            json={"name": "widget-v2", "description": "updated"},
+            headers=headers,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["data"]["name"] == "widget-v2"
+        assert resp.json()["data"]["description"] == "updated"
+
+        # Branch listing (empty until clone)
+        resp = client.get(f"/v1/repositories/{repo_id}/branches", headers=headers)
+        assert resp.status_code == 200
+        assert resp.json()["data"] == []
+
+        # Status
+        resp = client.get(f"/v1/repositories/{repo_id}/status", headers=headers)
+        assert resp.status_code == 200
+        assert resp.json()["data"]["clone_status"] == "pending"
+
+        # Archive -> hidden from default list
+        resp = client.post(f"/v1/repositories/{repo_id}/archive", headers=headers)
+        assert resp.status_code == 204
+        resp = client.get(f"/v1/repositories?workspace_id={ws_id}", headers=headers)
+        assert resp.status_code == 200
+        assert len(resp.json()["data"]) == 0
+
+        # Include archived in list
+        resp = client.get(
+            f"/v1/repositories?workspace_id={ws_id}&include_archived=true",
+            headers=headers,
+        )
+        assert resp.status_code == 200
+        assert len(resp.json()["data"]) == 1
+
+        # Restore -> visible again
+        resp = client.post(f"/v1/repositories/{repo_id}/restore", headers=headers)
+        assert resp.status_code == 200
+        resp = client.get(f"/v1/repositories?workspace_id={ws_id}", headers=headers)
+        assert resp.status_code == 200
+        assert len(resp.json()["data"]) == 1
+
+        # Delete (soft) -> not found
+        resp = client.delete(f"/v1/repositories/{repo_id}", headers=headers)
+        assert resp.status_code == 204
+        resp = client.get(f"/v1/repositories/{repo_id}", headers=headers)
+        assert resp.status_code == 404
+
+    def test_import_github_and_local(self, integration_client) -> None:
+        client = integration_client
+        token = _register(client, "repo-import@example.com")
+        headers = {"Host": "localhost", "Authorization": f"Bearer {token}"}
+        ws_id = _create_workspace(client, headers, "repo-import-ws")
+
+        resp = client.post(
+            "/v1/repositories/import",
+            json={
+                "workspace_id": ws_id,
+                "provider": "github",
+                "url": "https://github.com/octocat/Hello-World",
+            },
+            headers=headers,
+        )
+        assert resp.status_code == 201, resp.text
+        assert resp.json()["data"]["provider"] == "github"
+        assert resp.json()["data"]["name"] == "Hello-World"
+
+        resp = client.post(
+            "/v1/repositories/import",
+            json={
+                "workspace_id": ws_id,
+                "provider": "local",
+                "path": "/tmp/forge-test-folder",
+                "name": "local-repo",
+            },
+            headers=headers,
+        )
+        assert resp.status_code == 201, resp.text
+        assert resp.json()["data"]["provider"] == "local"
+        assert resp.json()["data"]["local_path"] == "/tmp/forge-test-folder"
+
+    def test_repository_authorization(self, integration_client) -> None:
+        client = integration_client
+        owner_token = _register(client, "repo-authz-owner@example.com")
+        outsider_token = _register(client, "repo-authz-out@example.com")
+        owner_headers = {"Host": "localhost", "Authorization": f"Bearer {owner_token}"}
+        outsider_headers = {"Host": "localhost", "Authorization": f"Bearer {outsider_token}"}
+
+        ws_id = _create_workspace(client, owner_headers, "repo-authz-ws")
+        create = client.post(
+            "/v1/repositories",
+            json={
+                "workspace_id": ws_id,
+                "name": "private-repo",
+                "owner": "alice",
+                "provider": "github",
+            },
+            headers=owner_headers,
+        )
+        assert create.status_code == 201
+        repo_id = create.json()["data"]["id"]
+
+        # Outsider (not a member) cannot access the repository.
+        resp = client.get(f"/v1/repositories/{repo_id}", headers=outsider_headers)
+        assert resp.status_code == 403
+        assert resp.json()["error"]["code"] == "authorization_error"
+
+        # Outsider cannot list workspace repositories.
+        resp = client.get(f"/v1/repositories?workspace_id={ws_id}", headers=outsider_headers)
+        assert resp.status_code == 403
+
+        # Outsider cannot delete.
+        resp = client.delete(f"/v1/repositories/{repo_id}", headers=outsider_headers)
+        assert resp.status_code == 403
+
+        # Outsider cannot archive.
+        resp = client.post(f"/v1/repositories/{repo_id}/archive", headers=outsider_headers)
+        assert resp.status_code == 403

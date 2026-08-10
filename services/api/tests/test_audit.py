@@ -75,6 +75,13 @@ class TestAuditEventTypes:
             "workspace.member_added",
             "workspace.member_removed",
             "workspace.member_role_changed",
+            "repository.created",
+            "repository.imported",
+            "repository.cloned",
+            "repository.updated",
+            "repository.archived",
+            "repository.restored",
+            "repository.deleted",
         }
         actual = {member.value for member in AuditEventType}
         assert expected == actual

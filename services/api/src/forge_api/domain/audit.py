@@ -33,6 +33,13 @@ class AuditEventType(StrEnum):
     WORKSPACE_MEMBER_ADDED = "workspace.member_added"
     WORKSPACE_MEMBER_REMOVED = "workspace.member_removed"
     WORKSPACE_MEMBER_ROLE_CHANGED = "workspace.member_role_changed"
+    REPOSITORY_CREATED = "repository.created"
+    REPOSITORY_IMPORTED = "repository.imported"
+    REPOSITORY_CLONED = "repository.cloned"
+    REPOSITORY_UPDATED = "repository.updated"
+    REPOSITORY_ARCHIVED = "repository.archived"
+    REPOSITORY_RESTORED = "repository.restored"
+    REPOSITORY_DELETED = "repository.deleted"
 
 
 @dataclass(frozen=True, slots=True)

@@ -15,6 +15,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from forge_api.application.auth.auth_service import AuthService
 from forge_api.application.auth.oauth_service import OAuthService
 from forge_api.application.auth.session_service import SessionService
+from forge_api.application.repositories.background_jobs import BackgroundJobService
+from forge_api.application.repositories.clone_service import RepositoryCloneService
+from forge_api.application.repositories.import_service import RepositoryImportService
+from forge_api.application.repositories.repository_service import RepositoryService
 from forge_api.application.workspaces.workspace_service import WorkspaceService
 from forge_api.domain.errors import AuthenticationError, ServiceUnavailableError
 from forge_api.domain.security import AccessClaims
@@ -23,6 +27,16 @@ from forge_api.infrastructure.database import create_session_factory
 from forge_api.infrastructure.oauth import OAuthStateManager
 from forge_api.infrastructure.oauth_identity_repository import (
     SqlOAuthIdentityRepository,
+)
+from forge_api.infrastructure.repository_branch_repository import (
+    SqlRepositoryBranchRepository,
+)
+from forge_api.infrastructure.repository_event_repository import (
+    SqlRepositoryEventRepository,
+)
+from forge_api.infrastructure.repository_repository import SqlRepositoryRepository
+from forge_api.infrastructure.repository_sync_job_repository import (
+    SqlRepositorySyncJobRepository,
 )
 from forge_api.infrastructure.security import (
     Argon2PasswordHasher,
@@ -186,6 +200,58 @@ def get_workspace_service(
         workspaces=SqlWorkspaceRepository(db),
         audit=audit,
     )
+
+
+def get_repository_service(
+    db: AsyncSession = Depends(get_session),
+    audit: AuditLogger = Depends(get_audit),
+) -> RepositoryService:
+    return RepositoryService(
+        repositories=SqlRepositoryRepository(db),
+        workspaces=SqlWorkspaceRepository(db),
+        events=SqlRepositoryEventRepository(db),
+        audit=audit,
+    )
+
+
+def get_import_service(
+    db: AsyncSession = Depends(get_session),
+    audit: AuditLogger = Depends(get_audit),
+) -> RepositoryImportService:
+    return RepositoryImportService(
+        repositories=SqlRepositoryRepository(db),
+        workspaces=SqlWorkspaceRepository(db),
+        events=SqlRepositoryEventRepository(db),
+        audit=audit,
+    )
+
+
+def get_clone_service(
+    db: AsyncSession = Depends(get_session),
+    audit: AuditLogger = Depends(get_audit),
+) -> RepositoryCloneService:
+    return RepositoryCloneService(
+        repositories=SqlRepositoryRepository(db),
+        branches=SqlRepositoryBranchRepository(db),
+        workspaces=SqlWorkspaceRepository(db),
+        events=SqlRepositoryEventRepository(db),
+        audit=audit,
+    )
+
+
+def get_background_job_service(
+    db: AsyncSession = Depends(get_session),
+) -> BackgroundJobService:
+    return BackgroundJobService(
+        repositories=SqlRepositoryRepository(db),
+        sync_jobs=SqlRepositorySyncJobRepository(db),
+    )
+
+
+def get_branch_repository(
+    db: AsyncSession = Depends(get_session),
+) -> SqlRepositoryBranchRepository:
+    return SqlRepositoryBranchRepository(db)
 
 
 # ─── Request context helpers ────────────────────────────────────────

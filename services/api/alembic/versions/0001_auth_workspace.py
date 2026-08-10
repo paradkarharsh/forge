@@ -8,7 +8,10 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision="0001_auth_workspace"; down_revision=None; branch_labels=None; depends_on=None
+revision = "0001_auth_workspace"
+down_revision = None
+branch_labels = None
+depends_on = None
 def upgrade():
     op.create_table("users",sa.Column("id",sa.Uuid(),primary_key=True),sa.Column("email",sa.String(320),nullable=False,unique=True),sa.Column("password_hash",sa.String(255)),sa.Column("created_at",sa.DateTime(timezone=True),server_default=sa.func.now()))
     op.create_table("workspaces",sa.Column("id",sa.Uuid(),primary_key=True),sa.Column("name",sa.String(120),nullable=False),sa.Column("deleted_at",sa.DateTime(timezone=True)))
@@ -17,4 +20,8 @@ def upgrade():
     op.create_index("ix_sessions_family_id","sessions",["family_id"])
     op.create_index("ix_sessions_user_id","sessions",["user_id"])
     op.create_index("ix_sessions_last_active_at","sessions",["last_active_at"])
-def downgrade(): op.drop_table("sessions"); op.drop_table("workspace_memberships"); op.drop_table("workspaces"); op.drop_table("users")
+def downgrade():
+    op.drop_table("sessions")
+    op.drop_table("workspace_memberships")
+    op.drop_table("workspaces")
+    op.drop_table("users")

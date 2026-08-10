@@ -72,3 +72,13 @@ Milestone 2 workspace tenancy is implemented in `services/api`:
 - JSON response shaping lives in the routers; domain records (`workspace.id`, `.name`, `.slug`, `.description`, `.deleted_at`) feed `_workspace_view`/`_member_view` helpers.
 
 Product features (indexer, memory, search, deployment, workspace UX) are not yet implemented.
+
+Feature Pack 4 repository onboarding is implemented in `services/api`:
+
+- `alembic/versions/0004_repository_onboarding.py` adds `repositories`, `repository_branches`, `repository_sync_jobs`, and `repository_events` with UUID PKs, `workspace_id` foreign keys, indexes, and JSON payload columns.
+- Repository domain lives in `domain/repository.py` (records + provider/visibility/clone/sync/job enums); ports were added to `domain/repositories.py` (`RepositoryRepository`, `RepositoryBranchRepository`, `RepositorySyncJobRepository`, `RepositoryEventRepository`). SQLAlchemy adapters live in `infrastructure/repository_*_repository.py`.
+- Application services in `application/repositories/`: `repository_service.py` (CRUD/archive/restore/delete with workspace RBAC), `import_service.py` (GitHub URL + local folder; GitLab/Bitbucket can be added as new provider branches without interface changes), `clone_service.py` (remote validation, git clone, default-branch detection, branch discovery, metadata extraction, clone-status transitions), `background_jobs.py` (clone/sync/index queues; indexing not yet performed).
+- Repository operations emit both audit events (`audit_events` via `AuditEventType.REPOSITORY_*`) and domain events (`repository_events`).
+- `/v1/repositories` router exposes list/create/get/update/delete/import/clone/archive/restore/branches/status behind `validated_claims`; DI wired in `presentation/http/dependencies.py`.
+- Tests: `test_repository_service.py`, `test_repository_import.py`, `test_repository_clone.py`, `test_background_jobs.py`, plus integration coverage in `test_integration.py` (CRUD lifecycle, import, authorization).
+- Validation fixes (2026-08-10): audit-event expected-set test updated for repository event types; integration-suite rate-limiter isolation via per-test `_reset_rate_limiter` autouse fixture (production limits unchanged); pre-existing ruff lint errors in migration `0001` corrected (formatting only, no schema change). Full suite: **163 tests passing**, ruff clean, Alembic chain verified base→head, app startup confirmed.

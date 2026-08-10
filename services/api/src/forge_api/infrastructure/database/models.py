@@ -2,7 +2,16 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, func
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
@@ -100,6 +109,106 @@ class MembershipModel(Base):
         ForeignKey("users.id", ondelete="CASCADE")
     )
     role: Mapped[str] = mapped_column(String(16))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+# ─── Repository domain models ──────────────────────────────────────
+
+
+class RepositoryModel(Base):
+    __tablename__ = "repositories"
+    __table_args__ = (
+        Index("ix_repositories_workspace_id", "workspace_id"),
+        Index("ix_repositories_provider", "provider"),
+        Index("ix_repositories_clone_status", "clone_status"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    workspace_id: Mapped[UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE")
+    )
+    name: Mapped[str] = mapped_column(String(255))
+    owner: Mapped[str] = mapped_column(String(255))
+    provider: Mapped[str] = mapped_column(String(16))
+    remote_url: Mapped[str | None] = mapped_column(String(2048))
+    local_path: Mapped[str | None] = mapped_column(String(1024))
+    default_branch: Mapped[str | None] = mapped_column(String(255))
+    current_branch: Mapped[str | None] = mapped_column(String(255))
+    clone_status: Mapped[str] = mapped_column(String(16), default="pending")
+    sync_status: Mapped[str] = mapped_column(String(16), default="idle")
+    visibility: Mapped[str] = mapped_column(String(16), default="private")
+    description: Mapped[str | None] = mapped_column(String(1000))
+    size_bytes: Mapped[int | None] = mapped_column(BigInteger)
+    last_commit_hash: Mapped[str | None] = mapped_column(String(64))
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class RepositoryBranchModel(Base):
+    __tablename__ = "repository_branches"
+    __table_args__ = (
+        UniqueConstraint("repository_id", "name", name="uq_repo_branch_name"),
+        Index("ix_repository_branches_repository_id", "repository_id"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    repository_id: Mapped[UUID] = mapped_column(
+        ForeignKey("repositories.id", ondelete="CASCADE")
+    )
+    name: Mapped[str] = mapped_column(String(255))
+    commit_hash: Mapped[str | None] = mapped_column(String(64))
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_protected: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class RepositorySyncJobModel(Base):
+    __tablename__ = "repository_sync_jobs"
+    __table_args__ = (
+        Index("ix_repository_sync_jobs_repository_id", "repository_id"),
+        Index("ix_repository_sync_jobs_status", "status"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    repository_id: Mapped[UUID] = mapped_column(
+        ForeignKey("repositories.id", ondelete="CASCADE")
+    )
+    job_type: Mapped[str] = mapped_column(String(16))
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_message: Mapped[str | None] = mapped_column(String(2000))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class RepositoryEventModel(Base):
+    __tablename__ = "repository_events"
+    __table_args__ = (
+        Index("ix_repository_events_repository_id", "repository_id"),
+        Index("ix_repository_events_event_type", "event_type"),
+        Index("ix_repository_events_created_at", "created_at"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    repository_id: Mapped[UUID] = mapped_column(
+        ForeignKey("repositories.id", ondelete="CASCADE")
+    )
+    event_type: Mapped[str] = mapped_column(String(64))
+    actor_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    payload: Mapped[dict[str, Any] | None] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql")
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

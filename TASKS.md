@@ -49,3 +49,24 @@
 - [ ] Implement repository indexer, memory engine, search, and deployment services.
 - [ ] Define Forge Frame design tokens and component specifications in detail.
 - [ ] Define authentication architecture and threat model.
+
+## Completed — Feature Pack 4 (Repository Onboarding, 2026-08-04)
+
+- [x] Repository domain: `RepositoryRecord`, `BranchRecord`, `SyncJobRecord`, `RepositoryEventRecord`; enums for provider (github/gitlab/bitbucket/local), visibility, clone status, sync status, sync job type/status.
+- [x] Database migration `0004_repository_onboarding`: `repositories`, `repository_branches`, `repository_sync_jobs`, `repository_events` tables with UUID PKs, workspace FK (CASCADE), indexes, and JSON payloads.
+- [x] Repository CRUD service: create, list (workspace-scoped), get, update (partial via `model_fields_set`), archive, soft delete, restore — all with workspace RBAC.
+- [x] Import service: GitHub URL import (regex-validated) and local-folder import; provider-strategy design leaves room for GitLab/Bitbucket without interface changes.
+- [x] Clone service: remote validation via `git ls-remote`, `git clone --no-checkout`, default-branch detection, branch discovery (`git branch -r`), metadata extraction (last commit hash, size), and clone status transitions pending → cloning → ready/failed.
+- [x] Background job service: enqueue/start/complete/fail for clone, sync, and index job types; index queue created but not performing indexing yet.
+- [x] Audit events: `repository.created`, `repository.imported`, `repository.cloned`, `repository.updated`, `repository.archived`, `repository.restored`, `repository.deleted`; domain `repository_events` log wired into services.
+- [x] API router `/v1/repositories`: POST/GET list/GET one/PATCH/DELETE, POST import, POST clone, POST `{id}/archive`, POST `{id}/restore`, GET `{id}/branches`, GET `{id}/status` — all behind `validated_claims` and the global response contract.
+- [x] Dependency injection for all repository services via `presentation/http/dependencies.py`.
+- [x] Unit tests (CRUD, import, clone, status, background jobs) + integration tests (CRUD lifecycle, import, authorization) against live PostgreSQL.
+- [x] ruff clean and full test suite green (121 previous + repository tests).
+
+## Completed — Feature Pack 4 Validation Fixes (2026-08-10)
+
+- [x] Update `test_audit.py` expected-event-set to include all `repository.*` audit event types.
+- [x] Add per-test `_reset_rate_limiter` autouse fixture to `test_integration.py` for rate-limiter isolation (production limits unchanged).
+- [x] Fix 7 pre-existing ruff lint errors in `alembic/versions/0001_auth_workspace.py` (formatting only, no schema change).
+- [x] Full validation: `ruff check .` clean, 163 tests passing, Alembic chain base↔head verified, app startup confirmed.
