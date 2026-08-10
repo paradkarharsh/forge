@@ -70,3 +70,21 @@
 - [x] Add per-test `_reset_rate_limiter` autouse fixture to `test_integration.py` for rate-limiter isolation (production limits unchanged).
 - [x] Fix 7 pre-existing ruff lint errors in `alembic/versions/0001_auth_workspace.py` (formatting only, no schema change).
 - [x] Full validation: `ruff check .` clean, 163 tests passing, Alembic chain base↔head verified, app startup confirmed.
+
+## Completed — Feature Pack 5 (Repository Intelligence, 2026-08-11)
+
+- [x] Domain (`domain/indexing.py`): FileRecord, SymbolRecord, DependencyRecord, ChunkRecord, IndexStats/Chunk/IndexingConfig, IndexStatus, SymbolKind, DependencyKind enums; path/revision validation helpers; parser/embedding/git ports.
+- [x] Migration `0005_repository_intelligence`: `repository_files`, `repository_symbols`, `repository_dependencies`, `repository_chunks` (with `vector(384)`), plus `index_status`/`indexed_at`/`file_count`/`symbol_count` on repositories — reversible.
+- [x] Infrastructure adapters: SqlRepositoryFileRepository, SqlRepositorySymbolRepository, SqlRepositoryDependencyRepository, SqlRepositoryChunkRepository (pgvector cosine semantic search).
+- [x] Tree-sitter parser: Python, TypeScript/TSX, JavaScript, Rust, Go (Phase 1); symbol extraction with class→method nesting, per-language dependency extraction; failures non-fatal.
+- [x] Language detection (`language_map.py`) with vendor/binary filtering.
+- [x] Safe git client (`git.py`): `ls-tree`/`show`/`diff` via argument arrays, validated repo-relative paths, timeouts.
+- [x] Embedding providers: NullEmbedder (default) + SentenceTransformerEmbedder (all-MiniLM-L6-v2, 384 dims, optional extra); system works with embeddings disabled.
+- [x] Chunking service (symbol-aware, configurable size/overlap).
+- [x] Dependency resolver mapping imports to repo files (python/ts/js/rust/go).
+- [x] RepositoryIndexService orchestrator: full + incremental/capability indexing, content-hash change detection, reindex, index status; audit `repository.indexed`/`repository.reindexed`.
+- [x] FileDiscoveryService + background IndexWorker (polls `SyncJobType.INDEX`, `FOR UPDATE SKIP LOCKED`); auto-enqueue indexing after clone.
+- [x] Search service: file/symbol/dependency/structural search + semantic search with graceful unavailable result when embeddings disabled.
+- [x] API: POST `/{id}/index`, GET `/{id}/index/status`, POST `/{id}/search`, GET `/{id}/symbols`, GET `/{id}/files`, GET `/{id}/files/{path}/symbols`, GET `/{id}/files/{path}/dependencies` — all behind `validated_claims` + RBAC + response envelope.
+- [x] Unit tests: parser, chunking, embedding, discovery, resolver, index service, search service. Integration tests: end-to-end clone→index→parse→store→search, authorization.
+- [x] Full validation green: `ruff check .`, 207 tests passing, Alembic 0004→0005 upgrade/downgrade verified, app startup, all 7 intelligence endpoints registered.

@@ -12,12 +12,10 @@ import os
 
 import asyncpg
 import pytest
-from alembic.config import Config
 from fastapi.testclient import TestClient
 
-from alembic import command
-from forge_api.infrastructure.settings import get_settings
-from forge_api.presentation.http.security_middleware import RateLimitMiddleware
+# Reset the shared in-memory rate limiter before every test in this module.
+pytestmark = pytest.mark.usefixtures("_reset_rate_limiter")
 
 PG_HOST = os.getenv("TEST_PG_HOST", "localhost")
 PG_PORT = os.getenv("TEST_PG_PORT", "5432")
@@ -27,111 +25,8 @@ PG_PASSWORD = os.getenv("POSTGRES_PASSWORD", "change-me-before-production")
 TEST_DB = "forge_test"
 
 
-def _admin_dsn() -> str:
-    return f"postgresql://{PG_USER}:{PG_PASSWORD}@{PG_HOST}:{PG_PORT}/postgres"
-
-
 def _test_db_url() -> str:
     return f"postgresql+asyncpg://{PG_USER}:{PG_PASSWORD}@{PG_HOST}:{PG_PORT}/{TEST_DB}"
-
-
-async def _database_reachable() -> bool:
-    try:
-        conn = await asyncpg.connect(dsn=_admin_dsn(), timeout=2)
-        await conn.close()
-        return True
-    except asyncpg.PostgresError:
-        return False
-
-
-async def _admin_execute(sql: str) -> None:
-    conn = await asyncpg.connect(dsn=_admin_dsn())
-    try:
-        await conn.execute(sql)
-    finally:
-        await conn.close()
-
-
-async def _create_database() -> None:
-    # CREATE DATABASE cannot run inside a transaction; asyncpg executes
-    # this statement directly when issued outside an explicit transaction.
-    conn = await asyncpg.connect(dsn=_admin_dsn())
-    try:
-        await conn.execute(f'CREATE DATABASE "{TEST_DB}"')
-    finally:
-        await conn.close()
-
-
-async def _drop_database() -> None:
-    try:
-        await _admin_execute(f'DROP DATABASE IF EXISTS "{TEST_DB}" WITH (FORCE)')
-    except asyncpg.PostgresError:
-        # The maintenance DB itself may be unavailable during teardown.
-        pass
-
-
-@pytest.fixture(scope="session")
-def forge_test_database():
-    """Provision a dedicated test database and run all migrations."""
-    try:
-        reachable = asyncio.run(_database_reachable())
-    except OSError:
-        reachable = False
-    if not reachable:
-        pytest.skip(
-            "PostgreSQL is not reachable. Start it with "
-            "`docker compose up -d postgres redis` before running integration tests."
-        )
-
-    asyncio.run(_drop_database())
-    asyncio.run(_create_database())
-
-    db_url = _test_db_url()
-    os.environ["FORGE_DATABASE_URL"] = db_url
-    os.environ["FORGE_REDIS_URL"] = os.getenv("TEST_REDIS_URL", "redis://localhost:6379/0")
-    os.environ["FORGE_JWT_SECRET"] = "integration-test-secret-at-least-32-chars"
-
-    get_settings.cache_clear()
-    alembic_cfg = Config("alembic.ini")
-    command.upgrade(alembic_cfg, "head")
-
-    yield db_url
-
-    get_settings.cache_clear()
-    asyncio.run(_drop_database())
-
-
-@pytest.fixture(scope="session")
-def integration_client(forge_test_database) -> TestClient:
-    """A fully wired application client against the real database."""
-    if forge_test_database is None:
-        pytest.skip("integration database unavailable")
-    os.environ["FORGE_DATABASE_URL"] = forge_test_database
-    get_settings.cache_clear()
-
-    from forge_api.presentation.http.app import create_app
-
-    app = create_app()
-    with TestClient(app) as client:
-        yield client
-
-
-@pytest.fixture(autouse=True)
-def _reset_rate_limiter(integration_client: TestClient) -> None:
-    """Clear the in-memory rate limiter between tests.
-
-    The ``RateLimitMiddleware`` accumulates request counts across the
-    session-scoped ``integration_client``.  Without a reset, later tests
-    can be denied with 429 depending on execution order — making the suite
-    non-deterministic.  This fixture walks the middleware stack, finds the
-    limiter, and empties its hit counter before every test.
-    """
-    mw = integration_client.app.middleware_stack
-    while mw is not None:
-        if isinstance(mw, RateLimitMiddleware):
-            mw.hits.clear()
-            return
-        mw = getattr(mw, "app", None)
 
 
 async def _user_id_by_email(email: str) -> str:

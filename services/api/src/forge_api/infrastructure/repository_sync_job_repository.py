@@ -79,3 +79,23 @@ class SqlRepositorySyncJobRepository:
             model.error_message = error_message
         await self._db.flush()
         return _to_record(model)
+
+    async def find_pending_by_type(self, job_type: str) -> SyncJobRecord | None:
+        """Claim the oldest pending job of ``job_type`` for this worker.
+
+        ``FOR UPDATE SKIP LOCKED`` lets multiple workers claim disjoint jobs
+        without contending; with a single worker it just prevents double
+        processing.
+        """
+        stmt = (
+            select(RepositorySyncJobModel)
+            .where(
+                RepositorySyncJobModel.job_type == job_type,
+                RepositorySyncJobModel.status == SyncJobStatus.PENDING.value,
+            )
+            .order_by(RepositorySyncJobModel.created_at)
+            .limit(1)
+            .with_for_update(skip_locked=True)
+        )
+        model = (await self._db.scalars(stmt)).first()
+        return _to_record(model) if model else None

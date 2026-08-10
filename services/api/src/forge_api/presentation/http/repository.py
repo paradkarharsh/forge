@@ -9,19 +9,31 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
+from forge_api.application.indexing.index_service import RepositoryIndexService
+from forge_api.application.indexing.search_service import SearchService
+from forge_api.application.repositories.background_jobs import BackgroundJobService
 from forge_api.application.repositories.clone_service import RepositoryCloneService
 from forge_api.application.repositories.import_service import RepositoryImportService
 from forge_api.application.repositories.repository_service import RepositoryService
 from forge_api.domain.errors import ValidationError
+from forge_api.domain.indexing import (
+    ChunkRecord,
+    DependencyRecord,
+    FileRecord,
+    SymbolRecord,
+)
 from forge_api.domain.repository import RepositoryRecord
 from forge_api.presentation.http.contracts import ok
 from forge_api.presentation.http.dependencies import (
     client_ip,
     client_user_agent,
+    get_background_job_service,
     get_branch_repository,
     get_clone_service,
     get_import_service,
+    get_index_service,
     get_repository_service,
+    get_search_service,
     validated_claims,
 )
 
@@ -63,6 +75,25 @@ class CloneRepositoryInput(BaseModel):
     repository_id: UUID
 
 
+class SearchRepositoryInput(BaseModel):
+    query: str = Field(min_length=1, max_length=512)
+    limit: int = Field(default=20, ge=1, le=100)
+    language: str | None = Field(default=None, max_length=64)
+    file_pattern: str | None = Field(default=None, max_length=2048)
+
+
+class SymbolsQueryInput(BaseModel):
+    query: str | None = Field(default=None, max_length=512)
+    kind: str | None = Field(default=None, max_length=32)
+    limit: int = Field(default=50, ge=1, le=500)
+
+
+class FilesQueryInput(BaseModel):
+    pattern: str | None = Field(default=None, max_length=2048)
+    language: str | None = Field(default=None, max_length=64)
+    limit: int = Field(default=50, ge=1, le=1000)
+
+
 # ─── Helpers ───────────────────────────────────────────────────────
 
 
@@ -99,6 +130,52 @@ def _branch_view(b) -> dict:
         "is_default": b.is_default,
         "is_protected": b.is_protected,
         "created_at": b.created_at.isoformat(),
+    }
+
+
+def _file_view(f: FileRecord) -> dict:
+    return {
+        "id": str(f.id),
+        "path": f.path,
+        "language": f.language,
+        "size_bytes": f.size_bytes,
+        "line_count": f.line_count,
+        "commit_hash": f.commit_hash,
+        "indexed_at": f.indexed_at.isoformat() if f.indexed_at else None,
+    }
+
+
+def _symbol_view(s: SymbolRecord) -> dict:
+    return {
+        "id": str(s.id),
+        "name": s.name,
+        "kind": s.kind.value,
+        "signature": s.signature,
+        "line_start": s.line_start,
+        "line_end": s.line_end,
+        "parent_symbol_id": str(s.parent_symbol_id) if s.parent_symbol_id else None,
+    }
+
+
+def _dependency_view(d: DependencyRecord) -> dict:
+    return {
+        "id": str(d.id),
+        "target_path": d.target_path,
+        "target_file_id": str(d.target_file_id) if d.target_file_id else None,
+        "kind": d.kind.value,
+        "is_external": d.is_external,
+    }
+
+
+def _chunk_view(c: ChunkRecord) -> dict:
+    return {
+        "id": str(c.id),
+        "chunk_index": c.chunk_index,
+        "content": c.content,
+        "line_start": c.line_start,
+        "line_end": c.line_end,
+        "token_count": c.token_count,
+        "has_embedding": c.embedding is not None,
     }
 
 
@@ -239,6 +316,7 @@ async def clone_repository(
     request: Request,
     claims=Depends(validated_claims),
     svc: RepositoryCloneService = Depends(get_clone_service),
+    jobs: BackgroundJobService = Depends(get_background_job_service),
 ):
     repo = await svc.clone_repository(
         repository_id=body.repository_id,
@@ -246,7 +324,13 @@ async def clone_repository(
         ip_address=client_ip(request),
         user_agent=client_user_agent(request),
     )
-    return ok(_repository_view(repo))
+    # Automatically enqueue indexing for the freshly cloned repository.
+    try:
+        index_job = await jobs.enqueue_index(repository_id=body.repository_id)
+        job_id = str(index_job.id)
+    except Exception:
+        job_id = None
+    return ok(_repository_view(repo), meta={"index_job_id": job_id})
 
 
 # ─── Restore ───────────────────────────────────────────────────────
@@ -310,3 +394,138 @@ async def get_repository_status(
 ):
     status = await svc.get_repository_status(repository_id, claims.user_id)
     return ok(status)
+
+
+# ─── Repository intelligence ────────────────────────────────────────
+
+
+@router.post("/{repository_id}/index", status_code=202)
+async def index_repository(
+    repository_id: UUID,
+    claims=Depends(validated_claims),
+    jobs: BackgroundJobService = Depends(get_background_job_service),
+):
+    job = await jobs.enqueue_index(repository_id=repository_id)
+    return ok({"job_id": str(job.id), "status": job.status.value})
+
+
+@router.get("/{repository_id}/index/status")
+async def get_index_status(
+    repository_id: UUID,
+    claims=Depends(validated_claims),
+    svc: RepositoryIndexService = Depends(get_index_service),
+):
+    status = await svc.get_index_status(repository_id, user_id=claims.user_id)
+    return ok(status)
+
+
+@router.post("/{repository_id}/search")
+async def search_repository(
+    repository_id: UUID,
+    body: SearchRepositoryInput,
+    claims=Depends(validated_claims),
+    svc: SearchService = Depends(get_search_service),
+):
+    result = await svc.search_semantic(
+        repository_id,
+        user_id=claims.user_id,
+        query=body.query,
+        limit=body.limit,
+    )
+    results = []
+    for item in result["results"]:
+        if body.language and item["language"] != body.language:
+            continue
+        if body.file_pattern and not (item["file_path"] or "").startswith(
+            body.file_pattern
+        ):
+            continue
+        results.append(
+            {
+                "file_path": item["file_path"],
+                "language": item["language"],
+                "chunk": _chunk_view(item["chunk"]),
+            }
+        )
+    return ok({"available": result["available"], "results": results})
+
+
+@router.get("/{repository_id}/symbols")
+async def list_or_search_symbols(
+    repository_id: UUID,
+    query: str | None = None,
+    kind: str | None = None,
+    limit: int = 50,
+    claims=Depends(validated_claims),
+    svc: SearchService = Depends(get_search_service),
+):
+    if query:
+        symbols = await svc.search_symbols(
+            repository_id,
+            user_id=claims.user_id,
+            query=query,
+            kind=kind,
+            limit=limit,
+        )
+    else:
+        symbols = await svc.list_symbols(
+            repository_id, user_id=claims.user_id, kind=kind
+        )
+    return ok([_symbol_view(s) for s in symbols])
+
+
+@router.get("/{repository_id}/files")
+async def list_files(
+    repository_id: UUID,
+    pattern: str | None = None,
+    language: str | None = None,
+    limit: int = 50,
+    claims=Depends(validated_claims),
+    svc: SearchService = Depends(get_search_service),
+):
+    files = await svc.search_files(
+        repository_id,
+        user_id=claims.user_id,
+        pattern=pattern,
+        language=language,
+        limit=limit,
+    )
+    return ok([_file_view(f) for f in files])
+
+
+@router.get("/{repository_id}/files/{path:path}/symbols")
+async def get_file_symbols(
+    repository_id: UUID,
+    path: str,
+    claims=Depends(validated_claims),
+    svc: SearchService = Depends(get_search_service),
+):
+    data = await svc.get_file(
+        repository_id, user_id=claims.user_id, file_path=path
+    )
+    return ok(
+        {
+            "file": _file_view(data["file"]),
+            "symbols": [_symbol_view(s) for s in data["symbols"]],
+            "chunks": [_chunk_view(c) for c in data["chunks"]],
+        }
+    )
+
+
+@router.get("/{repository_id}/files/{path:path}/dependencies")
+async def get_file_dependencies(
+    repository_id: UUID,
+    path: str,
+    claims=Depends(validated_claims),
+    svc: SearchService = Depends(get_search_service),
+):
+    data = await svc.get_dependencies(
+        repository_id, user_id=claims.user_id, file_path=path
+    )
+    return ok(
+        {
+            "file": _file_view(data["file"]),
+            "outgoing": [_dependency_view(d) for d in data["outgoing"]],
+            "incoming": [_dependency_view(d) for d in data["incoming"]],
+        }
+    )

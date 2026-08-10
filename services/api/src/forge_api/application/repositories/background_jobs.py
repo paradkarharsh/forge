@@ -119,3 +119,11 @@ class BackgroundJobService:
         if not job:
             raise NotFoundError("Job not found")
         return job
+
+    async def claim_next_index_job(self) -> SyncJobRecord | None:
+        """Claim the oldest pending index job, if any.
+
+        Returns the job to process or None when the queue is empty. The
+        claim is concurrency-safe (``FOR UPDATE SKIP LOCKED``).
+        """
+        return await self._sync_jobs.find_pending_by_type(SyncJobType.INDEX)

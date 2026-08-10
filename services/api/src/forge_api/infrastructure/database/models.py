@@ -2,12 +2,14 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     BigInteger,
     Boolean,
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     String,
     UniqueConstraint,
     func,
@@ -150,6 +152,10 @@ class RepositoryModel(Base):
     )
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    index_status: Mapped[str] = mapped_column(String(16), default="pending")
+    indexed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    file_count: Mapped[int | None] = mapped_column(Integer)
+    symbol_count: Mapped[int | None] = mapped_column(Integer)
 
 
 class RepositoryBranchModel(Base):
@@ -212,3 +218,102 @@ class RepositoryEventModel(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+# ─── Repository intelligence models ──────────────────────────────────
+
+
+class RepositoryFileModel(Base):
+    __tablename__ = "repository_files"
+    __table_args__ = (
+        UniqueConstraint("repository_id", "path", name="uq_repo_file_path"),
+        Index("ix_repository_files_repository_id", "repository_id"),
+        Index("ix_repository_files_language", "language"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    repository_id: Mapped[UUID] = mapped_column(
+        ForeignKey("repositories.id", ondelete="CASCADE")
+    )
+    path: Mapped[str] = mapped_column(String(2048))
+    language: Mapped[str | None] = mapped_column(String(64))
+    size_bytes: Mapped[int] = mapped_column(BigInteger)
+    line_count: Mapped[int | None] = mapped_column(Integer)
+    commit_hash: Mapped[str] = mapped_column(String(64))
+    content_hash: Mapped[str] = mapped_column(String(64))
+    indexed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class RepositorySymbolModel(Base):
+    __tablename__ = "repository_symbols"
+    __table_args__ = (
+        Index("ix_repository_symbols_file_id", "file_id"),
+        Index("ix_repository_symbols_repository_id", "repository_id"),
+        Index("ix_repository_symbols_kind", "kind"),
+        Index("ix_repository_symbols_name", "name"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    file_id: Mapped[UUID] = mapped_column(
+        ForeignKey("repository_files.id", ondelete="CASCADE")
+    )
+    repository_id: Mapped[UUID] = mapped_column(
+        ForeignKey("repositories.id", ondelete="CASCADE")
+    )
+    name: Mapped[str] = mapped_column(String(512))
+    kind: Mapped[str] = mapped_column(String(32))
+    signature: Mapped[str | None] = mapped_column(String(2048))
+    line_start: Mapped[int] = mapped_column(Integer)
+    line_end: Mapped[int | None] = mapped_column(Integer)
+    parent_symbol_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("repository_symbols.id", ondelete="CASCADE")
+    )
+
+
+class RepositoryDependencyModel(Base):
+    __tablename__ = "repository_dependencies"
+    __table_args__ = (
+        Index(
+            "ix_repository_dependencies_repository_id", "repository_id"
+        ),
+        Index(
+            "ix_repository_dependencies_source_file_id", "source_file_id"
+        ),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    repository_id: Mapped[UUID] = mapped_column(
+        ForeignKey("repositories.id", ondelete="CASCADE")
+    )
+    source_file_id: Mapped[UUID] = mapped_column(
+        ForeignKey("repository_files.id", ondelete="CASCADE")
+    )
+    target_path: Mapped[str] = mapped_column(String(2048))
+    target_file_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("repository_files.id", ondelete="SET NULL")
+    )
+    kind: Mapped[str] = mapped_column(String(32))
+    is_external: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class RepositoryChunkModel(Base):
+    __tablename__ = "repository_chunks"
+    __table_args__ = (
+        Index("ix_repository_chunks_file_id", "file_id"),
+        Index("ix_repository_chunks_repository_id", "repository_id"),
+        UniqueConstraint(
+            "file_id", "chunk_index", name="uq_repo_chunk_file_index"
+        ),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    file_id: Mapped[UUID] = mapped_column(
+        ForeignKey("repository_files.id", ondelete="CASCADE")
+    )
+    repository_id: Mapped[UUID] = mapped_column(
+        ForeignKey("repositories.id", ondelete="CASCADE")
+    )
+    chunk_index: Mapped[int] = mapped_column(Integer)
+    content: Mapped[str] = mapped_column()
+    line_start: Mapped[int] = mapped_column(Integer)
+    line_end: Mapped[int] = mapped_column(Integer)
+    token_count: Mapped[int] = mapped_column(Integer)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(384))

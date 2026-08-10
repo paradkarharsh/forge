@@ -5,6 +5,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from forge_api.domain.indexing import IndexStatus
 from forge_api.domain.repository import (
     CloneStatus,
     RepositoryRecord,
@@ -38,6 +39,10 @@ def _to_record(model: RepositoryModel) -> RepositoryRecord:
         updated_at=model.updated_at,
         archived_at=model.archived_at,
         deleted_at=model.deleted_at,
+        index_status=IndexStatus(model.index_status),
+        indexed_at=model.indexed_at,
+        file_count=model.file_count,
+        symbol_count=model.symbol_count,
     )
 
 
@@ -118,6 +123,10 @@ class SqlRepositoryRepository:
         size_bytes: int | None = _SENTINEL,
         last_commit_hash: str | None = _SENTINEL,
         last_synced_at: datetime | None = _SENTINEL,
+        index_status: str | None = None,
+        indexed_at: datetime | None = _SENTINEL,
+        file_count: int | None = _SENTINEL,
+        symbol_count: int | None = _SENTINEL,
     ) -> RepositoryRecord | None:
         model = await self._db.get(RepositoryModel, repository_id)
         if not model or model.deleted_at:
@@ -144,6 +153,14 @@ class SqlRepositoryRepository:
             model.last_commit_hash = last_commit_hash
         if last_synced_at is not _SENTINEL:
             model.last_synced_at = last_synced_at
+        if index_status is not None:
+            model.index_status = index_status
+        if indexed_at is not _SENTINEL:
+            model.indexed_at = indexed_at
+        if file_count is not _SENTINEL:
+            model.file_count = file_count
+        if symbol_count is not _SENTINEL:
+            model.symbol_count = symbol_count
         model.updated_at = datetime.now(UTC)
         await self._db.flush()
         return _to_record(model)

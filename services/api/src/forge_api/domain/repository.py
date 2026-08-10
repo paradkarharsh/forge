@@ -8,6 +8,8 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
+from forge_api.domain.indexing import IndexStatus
+
 
 class RepositoryProvider(StrEnum):
     GITHUB = "github"
@@ -70,6 +72,10 @@ class RepositoryRecord:
     updated_at: datetime
     archived_at: datetime | None
     deleted_at: datetime | None
+    index_status: IndexStatus = IndexStatus.PENDING
+    indexed_at: datetime | None = None
+    file_count: int | None = None
+    symbol_count: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

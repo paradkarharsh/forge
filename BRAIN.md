@@ -24,6 +24,7 @@
 - Decided (Milestone 1): repository port interfaces live in `domain/repositories.py`; SQLAlchemy adapters live in `infrastructure/*_repository.py`; application services in `application/`. Security primitives sit behind `domain/security.py` protocols. The presentation layer contains no SQLAlchemy logic.
 - Decided: dependency injection via FastAPI `Depends` chains rooted in `presentation/http/dependencies.py`; one shared DB session factory and one Redis client per app lifespan.
 - Decided: audit events are first-class records (`audit_events` table) capturing user, session, ip, user agent, reason, and a JSON payload.
+- Decided (Feature Pack 5): repository intelligence indexes through domain ports — `GitClient`, `TreeSitterParser`, `EmbeddingProvider` in the domain, concrete implementations in `infrastructure/` (subprocess git, tree-sitter, embeddings), so application services never touch SQLAlchemy/subprocess/library details. Embeddings default to disabled (`NullEmbedder`); the local sentence-transformers embedder is an optional extra, the dimension is fixed at 384 (`vector(384)`), and search uses exact cosine similarity until real repository volume is measured. Incremental indexing (content-hash + `git diff --name-status`) exists but the sync trigger is intentionally separate and not yet built.
 
 ## API conventions
 

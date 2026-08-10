@@ -38,6 +38,16 @@
   - Added per-test `_reset_rate_limiter` autouse fixture to `test_integration.py` that clears the in-memory `RateLimitMiddleware.hits` dict between tests, preventing rate-limit budget exhaustion across the session-scoped integration client. Production rate limits are unchanged.
   - Fixed 7 pre-existing ruff lint errors (E702 semicolons, E501 line length) in `alembic/versions/0001_auth_workspace.py` — formatting only, no schema or behavior change.
   - Full validation: `ruff check .` clean, **163 tests passing** (150 unit + 13 integration), Alembic chain base↔head verified (upgrade, downgrade, re-upgrade), app startup confirmed with all 8 repository endpoints registered.
+- **Feature Pack 5 — Repository Intelligence (complete, 2026-08-11):**
+  - Migration `0005_repository_intelligence` adds `repository_files`, `repository_symbols`, `repository_dependencies`, `repository_chunks` (pgvector `vector(384)`) and repository index metadata columns (`index_status`, `indexed_at`, `file_count`, `symbol_count`); reversible.
+  - Indexing pipeline built on domain ports: safe git client (`ls-tree`/`show`/`diff`, validated paths, argument arrays, timeouts), tree-sitter parser (Python, TypeScript/TSX, JavaScript, Rust, Go), symbol-aware chunking, dependency resolution, and optional embeddings.
+  - Embedding providers: `NullEmbedder` (default — system fully works with embeddings disabled) and local `SentenceTransformerEmbedder` (`all-MiniLM-L6-v2`, 384 dims, optional `embeddings` extra). No second embedding dimension; exact cosine similarity until real volume is measured.
+  - Background `IndexWorker` consumes the FP4 `SyncJobType.INDEX` queue (`FOR UPDATE SKIP LOCKED`); a successful clone now auto-enqueues indexing.
+  - Incremental capability via content-hash change detection + `git diff --name-status`; separate from the not-yet-built sync trigger.
+  - Search service: structural (files, symbols, dependencies) always available; semantic search reports `available: false` gracefully when embeddings disabled.
+  - New endpoints: POST `/{id}/index`, GET `/{id}/index/status`, POST `/{id}/search`, GET `/{id}/symbols`, GET `/{id}/files`, GET `/{id}/files/{path}/symbols`, GET `/{id}/files/{path}/dependencies` — behind `validated_claims` + workspace RBAC + global response envelope.
+  - New tests: parser, chunking, embedding, discovery, dependency resolver, index service, search service unit tests, plus end-to-end integration (real local git repo clone → index → parse → store → search) and authorization tests.
+  - Full validation green: `ruff check .`, **207 tests passing**, Alembic `0005` upgrade/downgrade verified, app startup with index worker, all 7 intelligence endpoints registered.
 
 ## Remaining features
 
@@ -46,12 +56,12 @@
 
 ## Current milestone
 
-Milestone 3 — Repository Onboarding (complete). Next: workspace invites & membership UX, then the repository indexer vertical slice.
+Milestone 4 — Repository Intelligence (complete). Next: workspace invites & membership UX, then repository sync + client surfaces for indexing/search.
 
 ## Current sprint
 
-Sprint 4 — repository indexing / next product milestone.
+Sprint 5 — repository sync / next product milestone.
 
 ## Next recommended task
 
-Select and document the repository-indexing vertical slice (indexer worker, memory engine, search), then build it end-to-end through the Next.js/Tauri surfaces.
+Wire a repository sync trigger (periodic/event-driven) into the FP5 incremental-index capability, then surface file/symbol/semantic search through the Next.js/Tauri clients.

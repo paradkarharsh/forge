@@ -82,6 +82,8 @@ class TestAuditEventTypes:
             "repository.archived",
             "repository.restored",
             "repository.deleted",
+            "repository.indexed",
+            "repository.reindexed",
         }
         actual = {member.value for member in AuditEventType}
         assert expected == actual

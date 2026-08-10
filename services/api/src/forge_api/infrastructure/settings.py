@@ -29,6 +29,24 @@ class Settings(BaseSettings):
     oauth_state_ttl_seconds: int = 600
     oauth_redirect_uri: str = "http://localhost:8000/v1/oauth/{provider}/callback"
 
+    # Repository intelligence / indexing
+    index_max_file_bytes: int = 512 * 1024
+    index_max_files: int = 50_000
+    index_chunk_tokens: int = 256
+    index_chunk_overlap: int = 32
+    index_embedding_batch_size: int = 64
+    index_timeout_seconds: int = 1_800
+    index_worker_poll_seconds: int = 10
+    index_git_timeout_seconds: int = 30
+    # Start the background index worker as part of the app lifespan.
+    index_worker_enabled: bool = True
+
+    # Embeddings. "none" (default) disables embeddings via NullEmbedder so
+    # structural search works without any ML dependency. "local" uses the
+    # sentence-transformers all-MiniLM-L6-v2 model (384 dimensions).
+    embedding_provider: str = "none"
+    embedding_model: str = "all-MiniLM-L6-v2"
+
 
 @lru_cache
 def get_settings() -> Settings:

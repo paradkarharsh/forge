@@ -8,6 +8,12 @@ from typing import Protocol
 from uuid import UUID
 
 from forge_api.domain.auth import WorkspaceRole
+from forge_api.domain.indexing import (
+    ChunkRecord,
+    DependencyRecord,
+    FileRecord,
+    SymbolRecord,
+)
 from forge_api.domain.repository import (
     BranchRecord,
     RepositoryEventRecord,
@@ -152,6 +158,10 @@ class RepositoryRepository(Protocol):
         size_bytes: int | None = ...,
         last_commit_hash: str | None = ...,
         last_synced_at: datetime | None = ...,
+        index_status: str | None = None,
+        indexed_at: datetime | None = ...,
+        file_count: int | None = ...,
+        symbol_count: int | None = ...,
     ) -> RepositoryRecord | None: ...
 
     async def soft_delete(self, repository_id: UUID) -> bool: ...
@@ -200,6 +210,8 @@ class RepositorySyncJobRepository(Protocol):
         error_message: str | None = None,
     ) -> SyncJobRecord | None: ...
 
+    async def find_pending_by_type(self, job_type: str) -> SyncJobRecord | None: ...
+
 
 class RepositoryEventRepository(Protocol):
     async def list_by_repository(
@@ -214,3 +226,84 @@ class RepositoryEventRepository(Protocol):
         actor_id: UUID | None = None,
         payload: dict | None = None,
     ) -> RepositoryEventRecord: ...
+
+
+class RepositoryFileRepository(Protocol):
+    async def get(self, file_id: UUID) -> FileRecord | None: ...
+
+    async def get_by_path(
+        self, repository_id: UUID, path: str
+    ) -> FileRecord | None: ...
+
+    async def list_by_repository(
+        self, repository_id: UUID, *, language: str | None = None
+    ) -> list[FileRecord]: ...
+
+    async def upsert(
+        self,
+        *,
+        repository_id: UUID,
+        path: str,
+        language: str | None,
+        size_bytes: int,
+        line_count: int | None,
+        commit_hash: str,
+        content_hash: str,
+    ) -> FileRecord: ...
+
+    async def delete_by_repository(self, repository_id: UUID) -> int: ...
+
+    async def delete_by_paths(self, repository_id: UUID, paths: list[str]) -> int: ...
+
+
+class RepositorySymbolRepository(Protocol):
+    async def list_by_file(self, file_id: UUID) -> list[SymbolRecord]: ...
+
+    async def list_by_repository(
+        self, repository_id: UUID, *, kind: str | None = None
+    ) -> list[SymbolRecord]: ...
+
+    async def search_by_name(
+        self,
+        repository_id: UUID,
+        query: str,
+        *,
+        kind: str | None = None,
+        limit: int = 50,
+    ) -> list[SymbolRecord]: ...
+
+    async def bulk_create(self, symbols: list[SymbolRecord]) -> None: ...
+
+    async def delete_by_file(self, file_id: UUID) -> int: ...
+
+    async def delete_by_repository(self, repository_id: UUID) -> int: ...
+
+
+class RepositoryDependencyRepository(Protocol):
+    async def list_by_file(self, source_file_id: UUID) -> list[DependencyRecord]: ...
+
+    async def list_dependents(self, target_file_id: UUID) -> list[DependencyRecord]: ...
+
+    async def bulk_create(self, dependencies: list[DependencyRecord]) -> None: ...
+
+    async def delete_by_file(self, source_file_id: UUID) -> int: ...
+
+    async def delete_by_repository(self, repository_id: UUID) -> int: ...
+
+
+class RepositoryChunkRepository(Protocol):
+    async def list_by_file(self, file_id: UUID) -> list[ChunkRecord]: ...
+
+    async def search_semantic(
+        self,
+        repository_id: UUID,
+        query_embedding: list[float],
+        *,
+        limit: int = 20,
+    ) -> list[ChunkRecord]: ...
+
+    async def bulk_create(self, chunks: list[ChunkRecord]) -> None: ...
+
+    async def delete_by_file(self, file_id: UUID) -> int: ...
+
+    async def delete_by_repository(self, repository_id: UUID) -> int: ...

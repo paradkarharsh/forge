@@ -15,15 +15,23 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from forge_api.application.auth.auth_service import AuthService
 from forge_api.application.auth.oauth_service import OAuthService
 from forge_api.application.auth.session_service import SessionService
+from forge_api.application.indexing.chunking_service import ChunkingService
+from forge_api.application.indexing.dependency_resolver import DependencyResolver
+from forge_api.application.indexing.file_discovery_service import FileDiscoveryService
+from forge_api.application.indexing.index_service import RepositoryIndexService
+from forge_api.application.indexing.search_service import SearchService
 from forge_api.application.repositories.background_jobs import BackgroundJobService
 from forge_api.application.repositories.clone_service import RepositoryCloneService
 from forge_api.application.repositories.import_service import RepositoryImportService
 from forge_api.application.repositories.repository_service import RepositoryService
 from forge_api.application.workspaces.workspace_service import WorkspaceService
 from forge_api.domain.errors import AuthenticationError, ServiceUnavailableError
+from forge_api.domain.indexing import IndexingConfig
 from forge_api.domain.security import AccessClaims
 from forge_api.infrastructure.audit import AuditLogger
 from forge_api.infrastructure.database import create_session_factory
+from forge_api.infrastructure.embedding import build_embedding_provider
+from forge_api.infrastructure.git import SubprocessGitClient
 from forge_api.infrastructure.oauth import OAuthStateManager
 from forge_api.infrastructure.oauth_identity_repository import (
     SqlOAuthIdentityRepository,
@@ -31,10 +39,22 @@ from forge_api.infrastructure.oauth_identity_repository import (
 from forge_api.infrastructure.repository_branch_repository import (
     SqlRepositoryBranchRepository,
 )
+from forge_api.infrastructure.repository_chunk_repository import (
+    SqlRepositoryChunkRepository,
+)
+from forge_api.infrastructure.repository_dependency_repository import (
+    SqlRepositoryDependencyRepository,
+)
 from forge_api.infrastructure.repository_event_repository import (
     SqlRepositoryEventRepository,
 )
+from forge_api.infrastructure.repository_file_repository import (
+    SqlRepositoryFileRepository,
+)
 from forge_api.infrastructure.repository_repository import SqlRepositoryRepository
+from forge_api.infrastructure.repository_symbol_repository import (
+    SqlRepositorySymbolRepository,
+)
 from forge_api.infrastructure.repository_sync_job_repository import (
     SqlRepositorySyncJobRepository,
 )
@@ -45,6 +65,7 @@ from forge_api.infrastructure.security import (
 )
 from forge_api.infrastructure.session_repository import SqlSessionRepository
 from forge_api.infrastructure.settings import Settings, get_settings
+from forge_api.infrastructure.treesitter import ForgeTreeSitterParser
 from forge_api.infrastructure.user_repository import SqlUserRepository
 from forge_api.infrastructure.workspace_repository import SqlWorkspaceRepository
 
@@ -252,6 +273,89 @@ def get_branch_repository(
     db: AsyncSession = Depends(get_session),
 ) -> SqlRepositoryBranchRepository:
     return SqlRepositoryBranchRepository(db)
+
+
+# ─── Repository intelligence ─────────────────────────────────────────
+
+
+def _indexing_config(settings: Settings) -> IndexingConfig:
+    return IndexingConfig(
+        max_file_bytes=settings.index_max_file_bytes,
+        max_files=settings.index_max_files,
+        chunk_tokens=settings.index_chunk_tokens,
+        chunk_overlap=settings.index_chunk_overlap,
+        embedding_batch_size=settings.index_embedding_batch_size,
+        timeout_seconds=settings.index_timeout_seconds,
+    )
+
+
+def _build_index_service(
+    db: AsyncSession, settings: Settings, audit: AuditLogger
+) -> RepositoryIndexService:
+    git = SubprocessGitClient(timeout_seconds=settings.index_git_timeout_seconds)
+    discovery = FileDiscoveryService(git=git, max_files=settings.index_max_files)
+    return RepositoryIndexService(
+        repositories=SqlRepositoryRepository(db),
+        files=SqlRepositoryFileRepository(db),
+        symbols=SqlRepositorySymbolRepository(db),
+        dependencies=SqlRepositoryDependencyRepository(db),
+        chunks=SqlRepositoryChunkRepository(db),
+        events=SqlRepositoryEventRepository(db),
+        workspaces=SqlWorkspaceRepository(db),
+        git=git,
+        parser=ForgeTreeSitterParser(),
+        embedding=build_embedding_provider(
+            settings.embedding_provider, settings.embedding_model
+        ),
+        chunker=ChunkingService(),
+        resolver=DependencyResolver(),
+        discovery=discovery,
+        config=_indexing_config(settings),
+        audit=audit,
+    )
+
+
+def get_index_service(
+    db: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+    audit: AuditLogger = Depends(get_audit),
+) -> RepositoryIndexService:
+    return _build_index_service(db, settings, audit)
+
+
+def get_search_service(
+    db: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> SearchService:
+    return SearchService(
+        repositories=SqlRepositoryRepository(db),
+        files=SqlRepositoryFileRepository(db),
+        symbols=SqlRepositorySymbolRepository(db),
+        dependencies=SqlRepositoryDependencyRepository(db),
+        chunks=SqlRepositoryChunkRepository(db),
+        workspaces=SqlWorkspaceRepository(db),
+        embedding=build_embedding_provider(
+            settings.embedding_provider, settings.embedding_model
+        ),
+    )
+
+
+def create_index_services(
+    db: AsyncSession,
+) -> tuple[RepositoryIndexService, BackgroundJobService]:
+    """Build the index service + background job service for a session.
+
+    Used by the background index worker, which manages its own sessions
+    rather than going through request-scoped dependencies.
+    """
+    settings = get_settings()
+    audit = AuditLogger(db)
+    index_service = _build_index_service(db, settings, audit)
+    jobs = BackgroundJobService(
+        repositories=SqlRepositoryRepository(db),
+        sync_jobs=SqlRepositorySyncJobRepository(db),
+    )
+    return index_service, jobs
 
 
 # ─── Request context helpers ────────────────────────────────────────

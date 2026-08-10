@@ -6,15 +6,29 @@ cache connections.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import os
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
+import asyncpg
 import pytest
+from alembic.config import Config
 from fastapi.testclient import TestClient
 
+from alembic import command
 from forge_api.domain.auth import WorkspaceRole
+from forge_api.domain.errors import DomainError
+from forge_api.domain.indexing import (
+    ChunkRecord,
+    DependencyRecord,
+    DiscoveredFile,
+    FileRecord,
+    IndexStatus,
+    SymbolRecord,
+)
 from forge_api.domain.repository import (
     BranchRecord,
     CloneStatus,
@@ -29,7 +43,9 @@ from forge_api.domain.security import AccessClaims
 from forge_api.domain.sessions import SessionRecord
 from forge_api.domain.users import OAuthIdentityRecord, UserRecord
 from forge_api.domain.workspaces import MembershipRecord, WorkspaceRecord
+from forge_api.infrastructure.language_map import detect_language
 from forge_api.infrastructure.settings import get_settings
+from forge_api.presentation.http.security_middleware import RateLimitMiddleware
 
 # ─── Fake security primitives ──────────────────────────────────────
 
@@ -455,6 +471,7 @@ def test_client(monkeypatch) -> TestClient:
         "FORGE_JWT_SECRET",
         "test-secret-that-is-at-least-32-chars-long-for-security",
     )
+    monkeypatch.setenv("FORGE_INDEX_WORKER_ENABLED", "false")
     get_settings.cache_clear()
     from forge_api.presentation.http.app import create_app
 
@@ -553,6 +570,10 @@ class FakeRepositoryRepository:
             "size_bytes": r.size_bytes,
             "last_commit_hash": r.last_commit_hash,
             "last_synced_at": r.last_synced_at,
+            "index_status": r.index_status,
+            "indexed_at": r.indexed_at,
+            "file_count": r.file_count,
+            "symbol_count": r.symbol_count,
         }
         for k, v in kwargs.items():
             if k in fields:
@@ -562,6 +583,8 @@ class FakeRepositoryRepository:
                     v = SyncStatus(v)
                 elif k == "visibility" and isinstance(v, str):
                     v = RepositoryVisibility(v)
+                elif k == "index_status" and isinstance(v, str):
+                    v = IndexStatus(v)
                 fields[k] = v
         updated = RepositoryRecord(
             id=r.id,
@@ -718,6 +741,15 @@ class FakeRepositorySyncJobRepository:
         self._jobs[job_id] = updated
         return updated
 
+    async def find_pending_by_type(self, job_type: str) -> SyncJobRecord | None:
+        pending = [
+            j for j in self._jobs.values()
+            if j.job_type.value == job_type and j.status == SyncJobStatus.PENDING
+        ]
+        if not pending:
+            return None
+        return sorted(pending, key=lambda j: j.created_at)[0]
+
 
 class FakeRepositoryEventRepository:
     def __init__(self) -> None:
@@ -743,6 +775,255 @@ class FakeRepositoryEventRepository:
         )
         self._events.append(record)
         return record
+
+
+class FakeRepositoryFileRepository:
+    def __init__(self) -> None:
+        self._files: dict[UUID, FileRecord] = {}
+
+    async def get(self, file_id: UUID) -> FileRecord | None:
+        return self._files.get(file_id)
+
+    async def get_by_path(
+        self, repository_id: UUID, path: str
+    ) -> FileRecord | None:
+        for f in self._files.values():
+            if f.repository_id == repository_id and f.path == path:
+                return f
+        return None
+
+    async def list_by_repository(
+        self, repository_id: UUID, *, language: str | None = None
+    ) -> list[FileRecord]:
+        results = [
+            f for f in self._files.values()
+            if f.repository_id == repository_id
+            and (language is None or f.language == language)
+        ]
+        return sorted(results, key=lambda f: f.path)
+
+    async def upsert(
+        self,
+        *,
+        repository_id: UUID,
+        path: str,
+        language: str | None,
+        size_bytes: int,
+        line_count: int | None,
+        commit_hash: str,
+        content_hash: str,
+    ) -> FileRecord:
+        existing = None
+        for f in self._files.values():
+            if f.repository_id == repository_id and f.path == path:
+                existing = f
+                break
+        if existing is not None:
+            record = FileRecord(
+                id=existing.id, repository_id=repository_id, path=path,
+                language=language, size_bytes=size_bytes, line_count=line_count,
+                commit_hash=commit_hash, content_hash=content_hash,
+                indexed_at=datetime.now(UTC),
+            )
+            self._files[record.id] = record
+            return record
+        record = FileRecord(
+            id=uuid4(), repository_id=repository_id, path=path,
+            language=language, size_bytes=size_bytes, line_count=line_count,
+            commit_hash=commit_hash, content_hash=content_hash,
+            indexed_at=datetime.now(UTC),
+        )
+        self._files[record.id] = record
+        return record
+
+    async def delete_by_repository(self, repository_id: UUID) -> int:
+        before = len(self._files)
+        self._files = {
+            k: v for k, v in self._files.items()
+            if v.repository_id != repository_id
+        }
+        return before - len(self._files)
+
+    async def delete_by_paths(
+        self, repository_id: UUID, paths: list[str]
+    ) -> int:
+        targets = set(paths)
+        before = len(self._files)
+        self._files = {
+            k: v for k, v in self._files.items()
+            if not (v.repository_id == repository_id and v.path in targets)
+        }
+        return before - len(self._files)
+
+
+class FakeRepositorySymbolRepository:
+    def __init__(self) -> None:
+        self._symbols: list[SymbolRecord] = []
+
+    async def list_by_file(self, file_id: UUID) -> list[SymbolRecord]:
+        return sorted(
+            [s for s in self._symbols if s.file_id == file_id],
+            key=lambda s: s.line_start,
+        )
+
+    async def list_by_repository(
+        self, repository_id: UUID, *, kind: str | None = None
+    ) -> list[SymbolRecord]:
+        result = [
+            s for s in self._symbols
+            if s.repository_id == repository_id
+            and (kind is None or s.kind.value == kind)
+        ]
+        return sorted(result, key=lambda s: s.line_start)
+
+    async def search_by_name(
+        self,
+        repository_id: UUID,
+        query: str,
+        *,
+        kind: str | None = None,
+        limit: int = 50,
+    ) -> list[SymbolRecord]:
+        result = [
+            s for s in self._symbols
+            if s.repository_id == repository_id
+            and query.lower() in s.name.lower()
+            and (kind is None or s.kind.value == kind)
+        ]
+        return sorted(result, key=lambda s: s.name)[:limit]
+
+    async def bulk_create(self, symbols: list[SymbolRecord]) -> None:
+        self._symbols.extend(symbols)
+
+    async def delete_by_file(self, file_id: UUID) -> int:
+        before = len(self._symbols)
+        self._symbols = [s for s in self._symbols if s.file_id != file_id]
+        return before - len(self._symbols)
+
+    async def delete_by_repository(self, repository_id: UUID) -> int:
+        before = len(self._symbols)
+        self._symbols = [
+            s for s in self._symbols if s.repository_id != repository_id
+        ]
+        return before - len(self._symbols)
+
+
+class FakeRepositoryDependencyRepository:
+    def __init__(self) -> None:
+        self._dependencies: list[DependencyRecord] = []
+
+    async def _all(self) -> list[DependencyRecord]:
+        return self._dependencies
+
+    async def list_by_file(self, source_file_id: UUID) -> list[DependencyRecord]:
+        return [
+            d for d in self._dependencies if d.source_file_id == source_file_id
+        ]
+
+    async def list_dependents(self, target_file_id: UUID) -> list[DependencyRecord]:
+        return [
+            d for d in self._dependencies if d.target_file_id == target_file_id
+        ]
+
+    async def bulk_create(self, dependencies: list[DependencyRecord]) -> None:
+        self._dependencies.extend(dependencies)
+
+    async def delete_by_file(self, source_file_id: UUID) -> int:
+        before = len(self._dependencies)
+        self._dependencies = [
+            d for d in self._dependencies
+            if d.source_file_id != source_file_id
+        ]
+        return before - len(self._dependencies)
+
+    async def delete_by_repository(self, repository_id: UUID) -> int:
+        before = len(self._dependencies)
+        self._dependencies = [
+            d for d in self._dependencies
+            if d.repository_id != repository_id
+        ]
+        return before - len(self._dependencies)
+
+
+class FakeRepositoryChunkRepository:
+    def __init__(self) -> None:
+        self._chunks: list[ChunkRecord] = []
+
+    async def list_by_file(self, file_id: UUID) -> list[ChunkRecord]:
+        return sorted(
+            [c for c in self._chunks if c.file_id == file_id],
+            key=lambda c: c.chunk_index,
+        )
+
+    async def search_semantic(
+        self,
+        repository_id: UUID,
+        query_embedding: list[float],
+        *,
+        limit: int = 20,
+    ) -> list[ChunkRecord]:
+        scored = []
+        for c in self._chunks:
+            if c.repository_id != repository_id or c.embedding is None:
+                continue
+            dot = sum(a * b for a, b in zip(c.embedding, query_embedding, strict=False))
+            scored.append((dot, c))
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [c for _, c in scored[:limit]]
+
+    async def bulk_create(self, chunks: list[ChunkRecord]) -> None:
+        self._chunks.extend(chunks)
+
+    async def delete_by_file(self, file_id: UUID) -> int:
+        before = len(self._chunks)
+        self._chunks = [c for c in self._chunks if c.file_id != file_id]
+        return before - len(self._chunks)
+
+    async def delete_by_repository(self, repository_id: UUID) -> int:
+        before = len(self._chunks)
+        self._chunks = [c for c in self._chunks if c.repository_id != repository_id]
+        return before - len(self._chunks)
+
+
+class FakeGitClient:
+    """In-memory ``GitClient`` backed by a {path: bytes} content map."""
+
+    def __init__(self, files: dict[str, bytes] | None = None) -> None:
+        self._files = files or {}
+        self._rev = "a" * 40
+        self._diff_entries: list = []
+
+    def set_revision(self, rev: str) -> None:
+        self._rev = rev
+
+    def set_files(self, files: dict[str, bytes]) -> None:
+        self._files = files
+
+    def set_diff(self, entries: list) -> None:
+        self._diff_entries = entries
+
+    async def head_revision(self, repo_dir: str) -> str:
+        return self._rev
+
+    async def list_tree(self, repo_dir: str, rev: str = "HEAD") -> list[DiscoveredFile]:
+        return [
+            DiscoveredFile(
+                path=path,
+                language=detect_language(path),
+                size_bytes=len(content),
+            )
+            for path, content in sorted(self._files.items())
+        ]
+
+    async def read_file(self, repo_dir: str, rev: str, path: str) -> bytes:
+        if path not in self._files:
+            raise DomainError("git show failed: not found", code="git_error")
+        return self._files[path]
+
+    async def diff_name_status(
+        self, repo_dir: str, old_rev: str, new_rev: str
+    ) -> list:
+        return list(self._diff_entries)
 
 
 # ─── Fixtures ───────────────────────────────────────────────────────
@@ -806,3 +1087,144 @@ def fake_sync_jobs() -> FakeRepositorySyncJobRepository:
 @pytest.fixture
 def fake_repo_events() -> FakeRepositoryEventRepository:
     return FakeRepositoryEventRepository()
+
+
+@pytest.fixture
+def fake_index_files() -> FakeRepositoryFileRepository:
+    return FakeRepositoryFileRepository()
+
+
+@pytest.fixture
+def fake_symbols() -> FakeRepositorySymbolRepository:
+    return FakeRepositorySymbolRepository()
+
+
+@pytest.fixture
+def fake_dependencies() -> FakeRepositoryDependencyRepository:
+    return FakeRepositoryDependencyRepository()
+
+
+@pytest.fixture
+def fake_chunks() -> FakeRepositoryChunkRepository:
+    return FakeRepositoryChunkRepository()
+
+
+@pytest.fixture
+def fake_git() -> FakeGitClient:
+    return FakeGitClient()
+
+
+# ─── Live integration infrastructure (PostgreSQL/Redis) ───────────────
+
+
+PG_HOST = os.getenv("TEST_PG_HOST", "localhost")
+PG_PORT = os.getenv("TEST_PG_PORT", "5432")
+PG_USER = os.getenv("POSTGRES_USER", "forge")
+PG_PASSWORD = os.getenv("POSTGRES_PASSWORD", "change-me-before-production")
+TEST_DB = "forge_test"
+
+
+def _admin_dsn() -> str:
+    return f"postgresql://{PG_USER}:{PG_PASSWORD}@{PG_HOST}:{PG_PORT}/postgres"
+
+
+def _test_db_url() -> str:
+    return f"postgresql+asyncpg://{PG_USER}:{PG_PASSWORD}@{PG_HOST}:{PG_PORT}/{TEST_DB}"
+
+
+async def _database_reachable() -> bool:
+    try:
+        conn = await asyncpg.connect(dsn=_admin_dsn(), timeout=2)
+        await conn.close()
+        return True
+    except asyncpg.PostgresError:
+        return False
+
+
+async def _admin_execute(sql: str) -> None:
+    conn = await asyncpg.connect(dsn=_admin_dsn())
+    try:
+        await conn.execute(sql)
+    finally:
+        await conn.close()
+
+
+async def _create_database() -> None:
+    conn = await asyncpg.connect(dsn=_admin_dsn())
+    try:
+        await conn.execute(f'CREATE DATABASE "{TEST_DB}"')
+    finally:
+        await conn.close()
+
+
+async def _drop_database() -> None:
+    try:
+        await _admin_execute(f'DROP DATABASE IF EXISTS "{TEST_DB}" WITH (FORCE)')
+    except asyncpg.PostgresError:
+        pass
+
+
+@pytest.fixture(scope="session")
+def forge_test_database():
+    """Provision a dedicated test database and run all migrations."""
+    try:
+        reachable = asyncio.run(_database_reachable())
+    except OSError:
+        reachable = False
+    if not reachable:
+        pytest.skip(
+            "PostgreSQL is not reachable. Start it with "
+            "`docker compose up -d postgres redis` before running integration tests."
+        )
+
+    asyncio.run(_drop_database())
+    asyncio.run(_create_database())
+
+    db_url = _test_db_url()
+    os.environ["FORGE_DATABASE_URL"] = db_url
+    os.environ["FORGE_REDIS_URL"] = os.getenv("TEST_REDIS_URL", "redis://localhost:6379/0")
+    os.environ["FORGE_JWT_SECRET"] = "integration-test-secret-at-least-32-chars"
+    os.environ["FORGE_INDEX_WORKER_ENABLED"] = "false"
+
+    get_settings.cache_clear()
+    alembic_cfg = Config("alembic.ini")
+    command.upgrade(alembic_cfg, "head")
+
+    yield db_url
+
+    get_settings.cache_clear()
+    asyncio.run(_drop_database())
+
+
+@pytest.fixture(scope="session")
+def integration_client(forge_test_database) -> TestClient:
+    """A fully wired application client against the real database."""
+    if forge_test_database is None:
+        pytest.skip("integration database unavailable")
+    os.environ["FORGE_DATABASE_URL"] = forge_test_database
+    get_settings.cache_clear()
+
+    from forge_api.presentation.http.app import create_app
+
+    app = create_app()
+    with TestClient(app) as client:
+        yield client
+
+
+@pytest.fixture
+def _reset_rate_limiter(integration_client: TestClient) -> None:
+    """Clear the in-memory rate limiter between integration tests.
+
+    The session-scoped ``integration_client`` shares one ``RateLimitMiddleware``
+    instance across every integration test in every module; without a reset,
+    later tests can be denied with 429 depending on execution order.
+
+    Integration test modules opt in via ``pytestmark = usefixtures(...)`` so
+    unit tests never trigger the live-database client.
+    """
+    mw = integration_client.app.middleware_stack
+    while mw is not None:
+        if isinstance(mw, RateLimitMiddleware):
+            mw.hits.clear()
+            return
+        mw = getattr(mw, "app", None)

@@ -63,6 +63,19 @@ async def _session_cleanup_loop(interval: int, settings: Settings) -> None:
             logger.exception("Session cleanup failed")
 
 
+async def _index_worker_loop(settings: Settings) -> None:
+    """Run the background repository index worker."""
+    from forge_api.application.indexing.index_worker import IndexWorker
+    from forge_api.presentation.http.dependencies import create_index_services
+
+    worker = IndexWorker(
+        session_factory=create_session_factory(settings),
+        create_services=create_index_services,
+        poll_seconds=settings.index_worker_poll_seconds,
+    )
+    await worker.run()
+
+
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings = get_settings()
@@ -80,15 +93,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.warning("Cache unavailable; OAuth flows will be disabled")
     app.state.cache = cache
 
-    task = asyncio.create_task(
-        _session_cleanup_loop(settings.session_cleanup_interval_seconds, settings)
-    )
+    tasks = [
+        asyncio.create_task(
+            _session_cleanup_loop(settings.session_cleanup_interval_seconds, settings)
+        )
+    ]
+    if settings.index_worker_enabled:
+        tasks.append(asyncio.create_task(_index_worker_loop(settings)))
 
     yield
 
-    task.cancel()
-    with contextlib.suppress(asyncio.CancelledError):
-        await task
+    for task in tasks:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
     if cache is not None:
         await cache.aclose()
 

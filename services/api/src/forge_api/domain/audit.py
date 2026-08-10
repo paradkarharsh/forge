@@ -40,6 +40,8 @@ class AuditEventType(StrEnum):
     REPOSITORY_ARCHIVED = "repository.archived"
     REPOSITORY_RESTORED = "repository.restored"
     REPOSITORY_DELETED = "repository.deleted"
+    REPOSITORY_INDEXED = "repository.indexed"
+    REPOSITORY_REINDEXED = "repository.reindexed"
 
 
 @dataclass(frozen=True, slots=True)
