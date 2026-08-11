@@ -71,7 +71,7 @@ Milestone 2 workspace tenancy is implemented in `services/api`:
 - The `validated_claims` dependency (in `presentation/http/dependencies.py`) enforces session revocation and expiry on every protected endpoint; all workspace/session routes use it.
 - JSON response shaping lives in the routers; domain records (`workspace.id`, `.name`, `.slug`, `.description`, `.deleted_at`) feed `_workspace_view`/`_member_view` helpers.
 
-Product features (indexer, memory, search, deployment, workspace UX) are not yet implemented.
+Product features (deployment, workspace UX, LLM/agent integration) are not yet implemented; repository indexing, search, and the context & memory engine are.
 
 Feature Pack 4 repository onboarding is implemented in `services/api`:
 
@@ -91,3 +91,13 @@ Feature Pack 5 repository intelligence is implemented in `services/api`:
 - `application/indexing/`: `file_discovery_service.py`, `chunking_service.py` (symbol-aware), `dependency_resolver.py`, `index_service.py` (orchestrator with content-hash incremental + reindex), `index_worker.py` (consumes `SyncJobType.INDEX`, `FOR UPDATE SKIP LOCKED`), `search_service.py` (structural search always available; semantic search gracefully reports unavailable when embeddings disabled).
 - Clone auto-enqueues an index job; `/v1/repositories` gained 7 intelligence endpoints (index, index/status, search, symbols, files, files/{path}/symbols, files/{path}/dependencies) behind `validated_claims` + RBAC.
 - Validation (2026-08-11): `ruff check .` clean, **207 tests passing**, Alembic `0004→0005` upgrade/downgrade verified, app startup with the index worker, end-to-end integration test (local-git clone → index → parse → store → search).
+
+Feature Pack 6 context & memory engine is implemented in `services/api`:
+
+- `domain/memory.py` owns the memory taxonomy (`MemoryType`: decision/convention/fact/preference/summary/annotation; `MemoryScope`: workspace/repository/user; `MemoryStatus`: active/stale/archived), `MemoryRecord`, `ConversationContextEntry`, the `ContextEntry`/`ContextWindow`/`ContextSource` context model, and the `MemoryRepository` + `ConversationContextStore` ports.
+- Migration `0006_context_memory` adds the `memories` table (workspace FK CASCADE, optional repository/user/created_by FKs, TEXT content, JSONB tags with GIN index, `embedding VECTOR(384)`, source linkage, timestamps, soft-delete); reversible.
+- `infrastructure/`: `memory_repository.py` (`SqlMemoryRepository` — workspace isolation and user ownership enforced at the SQL layer, pgvector cosine semantic search, JSONB `@>` tag search), `conversation_context.py` (`RedisConversationContextStore` keyed `forge:ctx:{session}:{conversation}`, max 100 entries, TTL; `NullConversationContextStore` fallback so assembly omits conversation gracefully when Redis is down).
+- `application/memory/`: `memory_service.py` (CRUD/search/lifecycle, embedding-on-write optional, audit, application-layer RBAC — workspace/repository memory needs OWNER/ADMIN/MAINTAINER, user memory is owner-only), `context_assembly_service.py` (structural + semantic fan-out → normalize → deduplicate → rank with configurable weights → filter → truncate to 8192 tokens), `maintenance_service.py` + `memory_worker.py` (expire memories, backfill embeddings, hard-delete soft-deleted > 30 days).
+- Post-index invalidation: `RepositoryIndexService._complete` marks stale only memories whose `source_file_path` is in the changed-path set; a memory failure never fails indexing.
+- API: 6 memory endpoints under `/v1/workspaces/{wid}/memories`, POST `/v1/context/assemble`, GET/POST/DELETE `/v1/context/conversation/{conversation_id}`; new audit events `memory.created/updated/deleted/archived/stale_marked/searched` and `context.assembled`.
+- Live-infrastructure validation (2026-08-11): Docker PostgreSQL 16 + pgvector 0.8.6 + Redis 7.4; Alembic 0006 upgrade/downgrade/re-upgrade verified; **258 tests passing** with zero skips; `ruff check .` clean; memory CRUD/authorization/user-isolation/context-assembly/repository-intelligence/Redis-conversation/reindex-invalidation verified end-to-end. Three genuine defects fixed during validation: SQL adapter string→enum conversion, JSONB tag `@>` operator, and `update()` lazy-reload after flush.

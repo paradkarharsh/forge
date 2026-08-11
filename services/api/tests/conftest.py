@@ -29,6 +29,11 @@ from forge_api.domain.indexing import (
     IndexStatus,
     SymbolRecord,
 )
+from forge_api.domain.memory import (
+    ConversationContextEntry,
+    MemoryRecord,
+    MemoryStatus,
+)
 from forge_api.domain.repository import (
     BranchRecord,
     CloneStatus,
@@ -472,6 +477,7 @@ def test_client(monkeypatch) -> TestClient:
         "test-secret-that-is-at-least-32-chars-long-for-security",
     )
     monkeypatch.setenv("FORGE_INDEX_WORKER_ENABLED", "false")
+    monkeypatch.setenv("FORGE_MEMORY_MAINTENANCE_WORKER_ENABLED", "false")
     get_settings.cache_clear()
     from forge_api.presentation.http.app import create_app
 
@@ -1026,6 +1032,461 @@ class FakeGitClient:
         return list(self._diff_entries)
 
 
+# ─── Fake context and memory fakes ───────────────────────────────────
+
+
+class FakeMemoryRepository:
+    """In-memory ``MemoryRepository`` mirroring the adapter's isolation rules."""
+
+    def __init__(self) -> None:
+        self._memories: dict[UUID, MemoryRecord] = {}
+
+    def _active(
+        self, workspace_id: UUID, *, repository_id=None, user_id=None
+    ):
+        # Mirrors the SQL adapter: a workspace-level query (user_id is None)
+        # never surfaces another user's memories.
+        def _user_match(m) -> bool:
+            if user_id is not None:
+                return m.user_id == user_id
+            return m.user_id is None
+
+        return [
+            m for m in self._memories.values()
+            if m.workspace_id == workspace_id
+            and m.deleted_at is None
+            and (repository_id is None or m.repository_id == repository_id)
+            and _user_match(m)
+        ]
+
+    async def get(self, memory_id: UUID) -> MemoryRecord | None:
+        m = self._memories.get(memory_id)
+        if m is None or m.deleted_at is not None:
+            return None
+        return m
+
+    async def list_by_workspace(
+        self,
+        workspace_id: UUID,
+        *,
+        memory_type: str | None = None,
+        status: str | None = None,
+        tags: list[str] | None = None,
+        limit: int = 50,
+    ) -> list[MemoryRecord]:
+        rows = self._active(workspace_id)
+        rows = self._filter(rows, memory_type, status, tags)
+        return sorted(rows, key=lambda m: m.updated_at, reverse=True)[:limit]
+
+    async def list_by_repository(
+        self,
+        repository_id: UUID,
+        *,
+        memory_type: str | None = None,
+        status: str | None = None,
+        tags: list[str] | None = None,
+        limit: int = 50,
+    ) -> list[MemoryRecord]:
+        rows = [
+            m for m in self._memories.values()
+            if m.repository_id == repository_id and m.deleted_at is None
+        ]
+        rows = self._filter(rows, memory_type, status, tags)
+        return sorted(rows, key=lambda m: m.updated_at, reverse=True)[:limit]
+
+    async def list_by_user(
+        self,
+        workspace_id: UUID,
+        user_id: UUID,
+        *,
+        memory_type: str | None = None,
+        status: str | None = None,
+        tags: list[str] | None = None,
+        limit: int = 50,
+    ) -> list[MemoryRecord]:
+        rows = self._active(workspace_id, user_id=user_id)
+        rows = self._filter(rows, memory_type, status, tags)
+        return sorted(rows, key=lambda m: m.updated_at, reverse=True)[:limit]
+
+    async def create(
+        self,
+        *,
+        workspace_id: UUID,
+        repository_id: UUID | None = None,
+        user_id: UUID | None = None,
+        memory_type: str,
+        scope: str,
+        content: str,
+        summary: str | None = None,
+        source_file_path: str | None = None,
+        source_symbol_name: str | None = None,
+        source_commit_hash: str | None = None,
+        confidence: float = 1.0,
+        tags: list[str] | None = None,
+        embedding: list[float] | None = None,
+        created_by: UUID | None = None,
+        expires_at: datetime | None = None,
+    ) -> MemoryRecord:
+        now = datetime.now(UTC)
+        record = MemoryRecord(
+            id=uuid4(),
+            workspace_id=workspace_id,
+            repository_id=repository_id,
+            user_id=user_id,
+            memory_type=memory_type,
+            scope=scope,
+            status=MemoryStatus.ACTIVE,
+            content=content,
+            summary=summary,
+            source_file_path=source_file_path,
+            source_symbol_name=source_symbol_name,
+            source_commit_hash=source_commit_hash,
+            confidence=confidence,
+            tags=list(tags or []),
+            embedding=embedding,
+            created_by=created_by,
+            created_at=now,
+            updated_at=now,
+            accessed_at=None,
+            expires_at=expires_at,
+            deleted_at=None,
+        )
+        self._memories[record.id] = record
+        return record
+
+    async def update(
+        self,
+        memory_id: UUID,
+        *,
+        content: str | None = None,
+        summary: str | None = _SENTINEL,
+        status: str | None = None,
+        confidence: float | None = None,
+        tags: list[str] | None = None,
+        embedding: list[float] | None = _SENTINEL,
+        expires_at: datetime | None = _SENTINEL,
+    ) -> MemoryRecord | None:
+        m = self._memories.get(memory_id)
+        if m is None or m.deleted_at is not None:
+            return None
+        fields = {
+            "content": m.content,
+            "summary": m.summary,
+            "status": m.status,
+            "confidence": m.confidence,
+            "tags": list(m.tags),
+            "embedding": m.embedding,
+            "expires_at": m.expires_at,
+        }
+        if content is not None:
+            fields["content"] = content
+        if summary is not _SENTINEL:
+            fields["summary"] = summary
+        if status is not None:
+            fields["status"] = MemoryStatus(status)
+        if confidence is not None:
+            fields["confidence"] = confidence
+        if tags is not None:
+            fields["tags"] = list(tags)
+        if embedding is not _SENTINEL:
+            fields["embedding"] = embedding
+        if expires_at is not _SENTINEL:
+            fields["expires_at"] = expires_at
+        updated = MemoryRecord(
+            id=m.id,
+            workspace_id=m.workspace_id,
+            repository_id=m.repository_id,
+            user_id=m.user_id,
+            memory_type=m.memory_type,
+            scope=m.scope,
+            source_file_path=m.source_file_path,
+            source_symbol_name=m.source_symbol_name,
+            source_commit_hash=m.source_commit_hash,
+            created_by=m.created_by,
+            created_at=m.created_at,
+            updated_at=datetime.now(UTC),
+            accessed_at=m.accessed_at,
+            deleted_at=m.deleted_at,
+            **fields,
+        )
+        self._memories[memory_id] = updated
+        return updated
+
+    async def soft_delete(self, memory_id: UUID) -> bool:
+        m = self._memories.get(memory_id)
+        if m is None or m.deleted_at is not None:
+            return False
+        self._memories[memory_id] = MemoryRecord(
+            id=m.id,
+            workspace_id=m.workspace_id,
+            repository_id=m.repository_id,
+            user_id=m.user_id,
+            memory_type=m.memory_type,
+            scope=m.scope,
+            status=m.status,
+            content=m.content,
+            summary=m.summary,
+            source_file_path=m.source_file_path,
+            source_symbol_name=m.source_symbol_name,
+            source_commit_hash=m.source_commit_hash,
+            confidence=m.confidence,
+            tags=list(m.tags),
+            embedding=m.embedding,
+            created_by=m.created_by,
+            created_at=m.created_at,
+            updated_at=m.updated_at,
+            accessed_at=m.accessed_at,
+            expires_at=m.expires_at,
+            deleted_at=datetime.now(UTC),
+        )
+        return True
+
+    async def search_semantic(
+        self,
+        workspace_id: UUID,
+        query_embedding: list[float],
+        *,
+        repository_id: UUID | None = None,
+        user_id: UUID | None = None,
+        limit: int = 20,
+    ) -> list[MemoryRecord]:
+        rows = self._active(
+            workspace_id, repository_id=repository_id, user_id=user_id
+        )
+        rows = [
+            m for m in rows
+            if m.embedding is not None and m.status == MemoryStatus.ACTIVE
+        ]
+        scored = []
+        for m in rows:
+            dot = sum(
+                a * b for a, b in zip(m.embedding, query_embedding, strict=False)
+            )
+            scored.append((dot, m))
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [m for _, m in scored[:limit]]
+
+    async def search_by_tags(
+        self,
+        workspace_id: UUID,
+        tags: list[str],
+        *,
+        repository_id: UUID | None = None,
+        limit: int = 50,
+    ) -> list[MemoryRecord]:
+        rows = self._active(workspace_id, repository_id=repository_id)
+        rows = [m for m in rows if all(t in m.tags for t in tags)]
+        return sorted(rows, key=lambda m: m.updated_at, reverse=True)[:limit]
+
+    async def mark_stale(
+        self, repository_id: UUID, paths: list[str],
+    ) -> int:
+        count = 0
+        for mid, m in list(self._memories.items()):
+            if (
+                m.repository_id == repository_id
+                and m.deleted_at is None
+                and m.status == MemoryStatus.ACTIVE
+                and m.source_file_path in paths
+            ):
+                self._memories[mid] = MemoryRecord(
+                    id=m.id,
+                    workspace_id=m.workspace_id,
+                    repository_id=m.repository_id,
+                    user_id=m.user_id,
+                    memory_type=m.memory_type,
+                    scope=m.scope,
+                    status=MemoryStatus.STALE,
+                    content=m.content,
+                    summary=m.summary,
+                    source_file_path=m.source_file_path,
+                    source_symbol_name=m.source_symbol_name,
+                    source_commit_hash=m.source_commit_hash,
+                    confidence=m.confidence,
+                    tags=list(m.tags),
+                    embedding=m.embedding,
+                    created_by=m.created_by,
+                    created_at=m.created_at,
+                    updated_at=m.updated_at,
+                    accessed_at=m.accessed_at,
+                    expires_at=m.expires_at,
+                    deleted_at=m.deleted_at,
+                )
+                count += 1
+        return count
+
+    async def delete_by_repository(self, repository_id: UUID) -> int:
+        before = len(self._memories)
+        self._memories = {
+            k: v for k, v in self._memories.items()
+            if v.repository_id != repository_id
+        }
+        return before - len(self._memories)
+
+    async def touch_accessed(self, memory_ids: list[UUID]) -> None:
+        for mid in memory_ids:
+            m = self._memories.get(mid)
+            if m is not None:
+                self._memories[mid] = MemoryRecord(
+                    id=m.id,
+                    workspace_id=m.workspace_id,
+                    repository_id=m.repository_id,
+                    user_id=m.user_id,
+                    memory_type=m.memory_type,
+                    scope=m.scope,
+                    status=m.status,
+                    content=m.content,
+                    summary=m.summary,
+                    source_file_path=m.source_file_path,
+                    source_symbol_name=m.source_symbol_name,
+                    source_commit_hash=m.source_commit_hash,
+                    confidence=m.confidence,
+                    tags=list(m.tags),
+                    embedding=m.embedding,
+                    created_by=m.created_by,
+                    created_at=m.created_at,
+                    updated_at=m.updated_at,
+                    accessed_at=datetime.now(UTC),
+                    expires_at=m.expires_at,
+                    deleted_at=m.deleted_at,
+                )
+
+    async def find_expired(
+        self, now: datetime, *, limit: int = 100,
+    ) -> list[MemoryRecord]:
+        rows = [
+            m for m in self._memories.values()
+            if m.expires_at is not None
+            and m.expires_at < now
+            and m.status == MemoryStatus.ACTIVE
+            and m.deleted_at is None
+        ]
+        return rows[:limit]
+
+    async def find_missing_embeddings(
+        self, *, limit: int = 100,
+    ) -> list[MemoryRecord]:
+        rows = [
+            m for m in self._memories.values()
+            if m.embedding is None and m.deleted_at is None
+        ]
+        return rows[:limit]
+
+    async def hard_delete_old(self, older_than: datetime) -> int:
+        before = len(self._memories)
+        self._memories = {
+            k: v for k, v in self._memories.items()
+            if v.deleted_at is None or v.deleted_at >= older_than
+        }
+        return before - len(self._memories)
+
+    async def bulk_update_status(
+        self, memory_ids: list[UUID], status: str,
+    ) -> int:
+        count = 0
+        for mid in memory_ids:
+            m = self._memories.get(mid)
+            if m is not None:
+                self._memories[mid] = MemoryRecord(
+                    id=m.id,
+                    workspace_id=m.workspace_id,
+                    repository_id=m.repository_id,
+                    user_id=m.user_id,
+                    memory_type=m.memory_type,
+                    scope=m.scope,
+                    status=MemoryStatus(status),
+                    content=m.content,
+                    summary=m.summary,
+                    source_file_path=m.source_file_path,
+                    source_symbol_name=m.source_symbol_name,
+                    source_commit_hash=m.source_commit_hash,
+                    confidence=m.confidence,
+                    tags=list(m.tags),
+                    embedding=m.embedding,
+                    created_by=m.created_by,
+                    created_at=m.created_at,
+                    updated_at=m.updated_at,
+                    accessed_at=m.accessed_at,
+                    expires_at=m.expires_at,
+                    deleted_at=m.deleted_at,
+                )
+                count += 1
+        return count
+
+    async def bulk_update_embeddings(
+        self, updates: list[tuple[UUID, list[float]]],
+    ) -> int:
+        count = 0
+        for mid, vector in updates:
+            m = self._memories.get(mid)
+            if m is not None:
+                self._memories[mid] = MemoryRecord(
+                    id=m.id,
+                    workspace_id=m.workspace_id,
+                    repository_id=m.repository_id,
+                    user_id=m.user_id,
+                    memory_type=m.memory_type,
+                    scope=m.scope,
+                    status=m.status,
+                    content=m.content,
+                    summary=m.summary,
+                    source_file_path=m.source_file_path,
+                    source_symbol_name=m.source_symbol_name,
+                    source_commit_hash=m.source_commit_hash,
+                    confidence=m.confidence,
+                    tags=list(m.tags),
+                    embedding=vector,
+                    created_by=m.created_by,
+                    created_at=m.created_at,
+                    updated_at=m.updated_at,
+                    accessed_at=m.accessed_at,
+                    expires_at=m.expires_at,
+                    deleted_at=m.deleted_at,
+                )
+                count += 1
+        return count
+
+    def _filter(self, rows, memory_type, status, tags):
+        if memory_type is not None:
+            rows = [m for m in rows if m.memory_type == memory_type]
+        if status is not None:
+            rows = [m for m in rows if m.status == MemoryStatus(status)]
+        if tags:
+            rows = [m for m in rows if all(t in m.tags for t in tags)]
+        return rows
+
+
+class FakeConversationContextStore:
+    """In-memory ``ConversationContextStore``."""
+
+    def __init__(self) -> None:
+        self._entries: dict[tuple[UUID, UUID], list[ConversationContextEntry]] = {}
+
+    async def get(
+        self, session_id: UUID, conversation_id: UUID,
+    ) -> list[ConversationContextEntry]:
+        return list(self._entries.get((session_id, conversation_id), []))
+
+    async def append(
+        self,
+        session_id: UUID,
+        conversation_id: UUID,
+        entry: ConversationContextEntry,
+    ) -> None:
+        key = (session_id, conversation_id)
+        self._entries.setdefault(key, []).append(entry)
+
+    async def clear(
+        self, session_id: UUID, conversation_id: UUID,
+    ) -> None:
+        self._entries.pop((session_id, conversation_id), None)
+
+    async def set_ttl(
+        self, session_id: UUID, conversation_id: UUID, ttl_seconds: int,
+    ) -> None:
+        return
+
+
 # ─── Fixtures ───────────────────────────────────────────────────────
 
 
@@ -1114,6 +1575,16 @@ def fake_git() -> FakeGitClient:
     return FakeGitClient()
 
 
+@pytest.fixture
+def fake_memories() -> FakeMemoryRepository:
+    return FakeMemoryRepository()
+
+
+@pytest.fixture
+def fake_conversation() -> FakeConversationContextStore:
+    return FakeConversationContextStore()
+
+
 # ─── Live integration infrastructure (PostgreSQL/Redis) ───────────────
 
 
@@ -1185,6 +1656,7 @@ def forge_test_database():
     os.environ["FORGE_REDIS_URL"] = os.getenv("TEST_REDIS_URL", "redis://localhost:6379/0")
     os.environ["FORGE_JWT_SECRET"] = "integration-test-secret-at-least-32-chars"
     os.environ["FORGE_INDEX_WORKER_ENABLED"] = "false"
+    os.environ["FORGE_MEMORY_MAINTENANCE_WORKER_ENABLED"] = "false"
 
     get_settings.cache_clear()
     alembic_cfg = Config("alembic.ini")

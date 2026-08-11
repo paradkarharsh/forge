@@ -84,6 +84,13 @@ class TestAuditEventTypes:
             "repository.deleted",
             "repository.indexed",
             "repository.reindexed",
+            "memory.created",
+            "memory.updated",
+            "memory.deleted",
+            "memory.archived",
+            "memory.stale_marked",
+            "memory.searched",
+            "context.assembled",
         }
         actual = {member.value for member in AuditEventType}
         assert expected == actual

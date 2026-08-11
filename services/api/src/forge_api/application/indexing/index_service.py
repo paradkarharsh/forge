@@ -29,6 +29,7 @@ from forge_api.domain.indexing import (
     TreeSitterParser,
 )
 from forge_api.domain.repositories import (
+    MemoryRepository,
     RepositoryChunkRepository,
     RepositoryDependencyRepository,
     RepositoryEventRepository,
@@ -66,6 +67,7 @@ class RepositoryIndexService:
         discovery,
         config: IndexingConfig,
         audit: AuditLogger,
+        memories: MemoryRepository | None = None,
     ) -> None:
         self._repos = repositories
         self._files = files
@@ -82,6 +84,7 @@ class RepositoryIndexService:
         self._discovery = discovery
         self._config = config
         self._audit = audit
+        self._memories = memories
 
     async def _require_index_role(self, workspace_id: UUID, user_id: UUID) -> None:
         member = await self._workspaces.get_membership(workspace_id, user_id)
@@ -113,8 +116,12 @@ class RepositoryIndexService:
         head = await self._git.head_revision(repo.local_path)
         discovered = await self._discovery.discover_files(repo.local_path, head)
         files_set = {f.path for f in discovered}
-        stats = await self._index_files(repo, head, discovered, files_set, start)
-        await self._complete(repo, stats, user_id, reindexed=False)
+        stats, changed_paths = await self._index_files(
+            repo, head, discovered, files_set, start
+        )
+        await self._complete(
+            repo, stats, user_id, reindexed=False, changed_paths=changed_paths
+        )
         return stats
 
     async def reindex_repository(
@@ -127,15 +134,39 @@ class RepositoryIndexService:
         if user_id is not None:
             await self._require_index_role(repo.workspace_id, user_id)
 
+        # Capture repository-scoped memory source paths before the drop so
+        # file-linked memories can be marked stale after the reindex.
+        stale_candidates: list[str] = []
+        if self._memories is not None:
+            try:
+                repo_memories = await self._memories.list_by_repository(
+                    repository_id, status="active"
+                )
+                stale_candidates = [
+                    m.source_file_path
+                    for m in repo_memories
+                    if m.source_file_path
+                ]
+            except Exception:
+                logger.warning(
+                    "Failed to collect memory paths before reindex %s",
+                    repository_id,
+                )
+
         await self._chunks.delete_by_repository(repository_id)
         await self._deps.delete_by_repository(repository_id)
         await self._symbols.delete_by_repository(repository_id)
         await self._files.delete_by_repository(repository_id)
 
         stats = await self.index_repository(repository_id, user_id=user_id)
-        await self._complete(repo, stats, user_id, reindexed=True)
+        await self._complete(
+            repo,
+            stats,
+            user_id,
+            reindexed=True,
+            changed_paths=stale_candidates,
+        )
         return stats
-
     async def get_index_status(
         self, repository_id: UUID, *, user_id: UUID | None = None
     ) -> dict:
@@ -161,9 +192,10 @@ class RepositoryIndexService:
         discovered: list,
         files_set: set[str],
         start: float,
-    ) -> IndexStats:
+    ) -> tuple[IndexStats, list[str]]:
         indexed = skipped = symbol_total = dep_total = chunk_total = 0
         emb_total = parse_errors = 0
+        changed_paths: list[str] = []
         path_to_id: dict[str, UUID] = {}
         pending_deps: list[tuple[DependencyRecord, str | None]] = []
 
@@ -196,6 +228,11 @@ class RepositoryIndexService:
                 path_to_id[df.path] = existing.id
                 indexed += 1
                 continue
+
+            # Content changed (or file is new): record the path so linked
+            # memories can be invalidated after a successful index.
+            if existing is not None:
+                changed_paths.append(df.path)
 
             text = raw.decode("utf-8", errors="replace")
             parsed = (
@@ -248,14 +285,17 @@ class RepositoryIndexService:
             chunk_total += len(chunk_records)
 
         await self._persist_dependencies(pending_deps, path_to_id)
-        return IndexStats(
-            files_indexed=indexed,
-            files_skipped=skipped,
-            symbols=symbol_total,
-            dependencies=dep_total,
-            chunks=chunk_total,
-            embeddings_created=emb_total,
-            parse_errors=parse_errors,
+        return (
+            IndexStats(
+                files_indexed=indexed,
+                files_skipped=skipped,
+                symbols=symbol_total,
+                dependencies=dep_total,
+                chunks=chunk_total,
+                embeddings_created=emb_total,
+                parse_errors=parse_errors,
+            ),
+            changed_paths,
         )
 
     async def _safe_read(self, repo: RepositoryRecord, head: str, path: str) -> bytes | None:
@@ -383,6 +423,7 @@ class RepositoryIndexService:
         user_id: UUID | None,
         *,
         reindexed: bool,
+        changed_paths: list[str] | None = None,
     ) -> None:
         now = datetime.now(UTC)
         await self._repos.update(
@@ -411,3 +452,26 @@ class RepositoryIndexService:
             actor_id=user_id,
             payload=payload,
         )
+
+        # Post-index memory invalidation: mark stale only memories that
+        # explicitly reference a changed file path.  Memories without
+        # source linkage remain active.  A memory failure here must never
+        # fail repository indexing.
+        if changed_paths and self._memories is not None:
+            try:
+                count = await self._memories.mark_stale(repo.id, changed_paths)
+                if count:
+                    self._audit.log(
+                        AuditEventType.MEMORY_STALE_MARKED,
+                        user_id=user_id,
+                        payload={
+                            "repository_id": str(repo.id),
+                            "memory_count": count,
+                            "changed_paths": len(changed_paths),
+                        },
+                    )
+            except Exception:
+                logger.exception(
+                    "Memory invalidation failed after indexing repository %s",
+                    repo.id,
+                )

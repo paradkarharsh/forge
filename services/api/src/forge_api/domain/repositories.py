@@ -14,6 +14,10 @@ from forge_api.domain.indexing import (
     FileRecord,
     SymbolRecord,
 )
+from forge_api.domain.memory import (
+    ConversationContextEntry,
+    MemoryRecord,
+)
 from forge_api.domain.repository import (
     BranchRecord,
     RepositoryEventRecord,
@@ -307,3 +311,148 @@ class RepositoryChunkRepository(Protocol):
     async def delete_by_file(self, file_id: UUID) -> int: ...
 
     async def delete_by_repository(self, repository_id: UUID) -> int: ...
+
+
+class MemoryRepository(Protocol):
+    """Durable memory store port.
+
+    Every query enforces workspace isolation, and user-scoped queries
+    additionally enforce user ownership at the adapter level so isolation
+    never depends on the HTTP layer alone.
+    """
+
+    async def get(self, memory_id: UUID) -> MemoryRecord | None: ...
+
+    async def list_by_workspace(
+        self,
+        workspace_id: UUID,
+        *,
+        memory_type: str | None = None,
+        status: str | None = None,
+        tags: list[str] | None = None,
+        limit: int = 50,
+    ) -> list[MemoryRecord]: ...
+
+    async def list_by_repository(
+        self,
+        repository_id: UUID,
+        *,
+        memory_type: str | None = None,
+        status: str | None = None,
+        tags: list[str] | None = None,
+        limit: int = 50,
+    ) -> list[MemoryRecord]: ...
+
+    async def list_by_user(
+        self,
+        workspace_id: UUID,
+        user_id: UUID,
+        *,
+        memory_type: str | None = None,
+        status: str | None = None,
+        tags: list[str] | None = None,
+        limit: int = 50,
+    ) -> list[MemoryRecord]: ...
+
+    async def create(
+        self,
+        *,
+        workspace_id: UUID,
+        repository_id: UUID | None = None,
+        user_id: UUID | None = None,
+        memory_type: str,
+        scope: str,
+        content: str,
+        summary: str | None = None,
+        source_file_path: str | None = None,
+        source_symbol_name: str | None = None,
+        source_commit_hash: str | None = None,
+        confidence: float = 1.0,
+        tags: list[str] | None = None,
+        embedding: list[float] | None = None,
+        created_by: UUID | None = None,
+        expires_at: datetime | None = None,
+    ) -> MemoryRecord: ...
+
+    async def update(
+        self,
+        memory_id: UUID,
+        *,
+        content: str | None = None,
+        summary: str | None = ...,
+        status: str | None = None,
+        confidence: float | None = None,
+        tags: list[str] | None = None,
+        embedding: list[float] | None = ...,
+        expires_at: datetime | None = ...,
+    ) -> MemoryRecord | None: ...
+
+    async def soft_delete(self, memory_id: UUID) -> bool: ...
+
+    async def search_semantic(
+        self,
+        workspace_id: UUID,
+        query_embedding: list[float],
+        *,
+        repository_id: UUID | None = None,
+        user_id: UUID | None = None,
+        limit: int = 20,
+    ) -> list[MemoryRecord]: ...
+
+    async def search_by_tags(
+        self,
+        workspace_id: UUID,
+        tags: list[str],
+        *,
+        repository_id: UUID | None = None,
+        limit: int = 50,
+    ) -> list[MemoryRecord]: ...
+
+    async def mark_stale(
+        self, repository_id: UUID, paths: list[str],
+    ) -> int: ...
+
+    async def delete_by_repository(self, repository_id: UUID) -> int: ...
+
+    async def touch_accessed(self, memory_ids: list[UUID]) -> None: ...
+
+    async def find_expired(
+        self, now: datetime, *, limit: int = 100,
+    ) -> list[MemoryRecord]: ...
+
+    async def find_missing_embeddings(
+        self, *, limit: int = 100,
+    ) -> list[MemoryRecord]: ...
+
+    async def hard_delete_old(self, older_than: datetime) -> int: ...
+
+    async def bulk_update_status(
+        self, memory_ids: list[UUID], status: str,
+    ) -> int: ...
+
+    async def bulk_update_embeddings(
+        self, updates: list[tuple[UUID, list[float]]],
+    ) -> int: ...
+
+
+class ConversationContextStore(Protocol):
+    """Ephemeral conversation context port (Redis-backed)."""
+
+    async def get(
+        self, session_id: UUID, conversation_id: UUID,
+    ) -> list[ConversationContextEntry]: ...
+
+    async def append(
+        self,
+        session_id: UUID,
+        conversation_id: UUID,
+        entry: ConversationContextEntry,
+    ) -> None: ...
+
+    async def clear(
+        self, session_id: UUID, conversation_id: UUID,
+    ) -> None: ...
+
+    async def set_ttl(
+        self, session_id: UUID, conversation_id: UUID, ttl_seconds: int,
+    ) -> None: ...

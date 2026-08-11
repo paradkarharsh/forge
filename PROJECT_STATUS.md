@@ -48,15 +48,27 @@
   - New endpoints: POST `/{id}/index`, GET `/{id}/index/status`, POST `/{id}/search`, GET `/{id}/symbols`, GET `/{id}/files`, GET `/{id}/files/{path}/symbols`, GET `/{id}/files/{path}/dependencies` — behind `validated_claims` + workspace RBAC + global response envelope.
   - New tests: parser, chunking, embedding, discovery, dependency resolver, index service, search service unit tests, plus end-to-end integration (real local git repo clone → index → parse → store → search) and authorization tests.
   - Full validation green: `ruff check .`, **207 tests passing**, Alembic `0005` upgrade/downgrade verified, app startup with index worker, all 7 intelligence endpoints registered.
+- **Feature Pack 6 — Context & Memory Engine (complete, validated 2026-08-11):**
+  - Migration `0006_context_memory` adds the `memories` table: UUID PK, workspace FK (CASCADE), optional repository/user/created_by FKs, memory_type/scope/status, TEXT content, summary, source linkage (file path/symbol/commit), confidence, JSONB tags (GIN index), `embedding VECTOR(384)`, timestamps, soft-delete; reversible.
+  - Domain (`domain/memory.py`): `MemoryType` (decision/convention/fact/preference/summary/annotation), `MemoryScope` (workspace/repository/user), `MemoryStatus` (active/stale/archived), `MemoryRecord`, `ConversationContextEntry`, `ContextEntry`/`ContextWindow`/`ContextSource`, `ContextRankingConfig`; `MemoryRepository` and `ConversationContextStore` ports.
+  - MemoryService: CRUD, search (semantic + tags), archive/restore/reconfirm, embedding-on-write (optional), audit, and application-layer RBAC — workspace/repository memory requires OWNER/ADMIN/MAINTAINER; user memory visible only to its owner (enforced at the SQL adapter level too).
+  - ContextAssemblyService: fan-out retrieval combining memory + repository intelligence (symbols/files/dependencies) + ephemeral conversation context + semantic (memory & chunk vectors when embeddings enabled); normalize → deduplicate → rank (configurable weights) → filter → truncate (default 8192 tokens).
+  - Memory maintenance worker (periodic): expire memories (`expires_at` → stale), backfill missing embeddings, hard-delete soft-deleted records older than 30 days.
+  - Post-index invalidation: after a successful index, only memories whose `source_file_path` is in the changed-path set are marked stale; a memory failure never fails indexing.
+  - Ephemeral conversation context in Redis (`forge:ctx:{session}:{conversation}`, max 100 entries, TTL min(session, 24h)); never auto-promoted to durable memory; graceful omission when Redis is down.
+  - API: 6 memory endpoints under `/v1/workspaces/{wid}/memories`, POST `/v1/context/assemble`, GET/POST/DELETE `/v1/context/conversation/{conversation_id}` — behind `validated_claims` + RBAC + global envelope.
+  - New audit events: `memory.created/updated/deleted/archived/stale_marked/searched`, `context.assembled`.
+  - **Live-infrastructure validation (2026-08-11):** Docker PostgreSQL 16 + pgvector 0.8.6 and Redis 7.4 healthy; Alembic chain base→0006 upgrade, 0006 downgrade, re-upgrade verified; **258 tests passing** (no skips) against live PostgreSQL + Redis; `ruff check .` clean; app startup + all routes registered; memory CRUD/authorization/user-isolation/context-assembly/repository-intelligence/Redis-conversation/reindex-invalidation verified end-to-end.
+  - Three genuine defects found and fixed during live validation: SQL adapter returned plain strings instead of enums; JSONB `tags` used a `LIKE` expression instead of `@>`; `update()` triggered a lazy reload after flush (`MissingGreenlet`).
 
 ## Remaining features
 
-- Product implementation remains: Tauri desktop client behavior, Next.js application surfaces, FastAPI workers, repository indexer, memory engine, search, deployment, and observability.
+- Product implementation remains: Tauri desktop client behavior, Next.js application surfaces, LLM/agent integration (the context & memory layer is ready to feed it), repository sync trigger, deployment, and observability.
 - Detailed product requirements, API contracts, database schema, design tokens, and measurable performance targets need completion before the corresponding build work.
 
 ## Current milestone
 
-Milestone 4 — Repository Intelligence (complete). Next: workspace invites & membership UX, then repository sync + client surfaces for indexing/search.
+Milestone 5 — Context & Memory Engine (complete). Next: workspace invites & membership UX, then LLM/agent integration on top of the context window, and repository sync + client surfaces for indexing/search.
 
 ## Current sprint
 
@@ -64,4 +76,4 @@ Sprint 5 — repository sync / next product milestone.
 
 ## Next recommended task
 
-Wire a repository sync trigger (periodic/event-driven) into the FP5 incremental-index capability, then surface file/symbol/semantic search through the Next.js/Tauri clients.
+Wire the FP5 incremental-index capability to a repository sync trigger (periodic/event-driven), then connect the FP6 context window to the future LLM/agent layer and surface search through the Next.js/Tauri clients.

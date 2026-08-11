@@ -88,3 +88,19 @@
 - [x] API: POST `/{id}/index`, GET `/{id}/index/status`, POST `/{id}/search`, GET `/{id}/symbols`, GET `/{id}/files`, GET `/{id}/files/{path}/symbols`, GET `/{id}/files/{path}/dependencies` — all behind `validated_claims` + RBAC + response envelope.
 - [x] Unit tests: parser, chunking, embedding, discovery, resolver, index service, search service. Integration tests: end-to-end clone→index→parse→store→search, authorization.
 - [x] Full validation green: `ruff check .`, 207 tests passing, Alembic 0004→0005 upgrade/downgrade verified, app startup, all 7 intelligence endpoints registered.
+
+## Completed — Feature Pack 6 (Context & Memory Engine, 2026-08-11)
+
+- [x] Migration `0006_context_memory`: `memories` table (UUID PK, workspace FK CASCADE, optional repository/user/created_by FKs, memory_type/scope/status, TEXT content, summary, source_file_path/source_symbol_name/source_commit_hash, confidence, JSONB tags + GIN index, `embedding VECTOR(384)`, timestamps, soft-delete) — reversible upgrade/downgrade.
+- [x] Domain (`domain/memory.py`): MemoryType/MemoryScope/MemoryStatus enums, MemoryRecord, ConversationContextEntry, ContextEntry/ContextWindow/ContextSource, ContextRankingConfig; `MemoryRepository` and `ConversationContextStore` ports in `domain/repositories.py`.
+- [x] SqlMemoryRepository adapter: workspace isolation + user ownership enforced at the SQL layer; get/list-by-workspace/repository/user, create, update, soft delete, semantic (pgvector cosine), tag (JSONB `@>`), stale marking, delete-by-repository, accessed_at touches.
+- [x] RedisConversationContextStore + NullConversationContextStore fallback: `forge:ctx:{session}:{conversation}`, max 100 entries, TTL, session-scoped; graceful omission when Redis unavailable.
+- [x] MemoryService: create/get/list/update/delete/archive/restore/reconfirm/search; embedding-on-write optional; audit events; application-layer RBAC (workspace/repository = OWNER/ADMIN/MAINTAINER; user = owner-only).
+- [x] ContextAssemblyService: structural (memory + symbols + files + dependencies + conversation) and semantic (memory + chunk vectors) retrieval; normalize → deduplicate → rank (configurable weights) → filter → truncate (8192-token default).
+- [x] MemoryMaintenanceService + MemoryMaintenanceWorker (periodic): expire memories, backfill embeddings, hard-delete soft-deleted > 30 days; follows the FP5 worker conventions.
+- [x] Post-index invalidation hook in RepositoryIndexService: only memories referencing changed file paths are marked stale; memory failures never fail indexing.
+- [x] API: 6 memory endpoints under `/v1/workspaces/{wid}/memories`, POST `/v1/context/assemble`, GET/POST/DELETE `/v1/context/conversation/{conversation_id}`; DI wired in `dependencies.py`; routers in `app.py`.
+- [x] Settings: memory/context tuning values with range validation; new audit event types `memory.*` + `context.assembled`.
+- [x] Unit tests (memory service, context assembly, conversation context, maintenance, invalidation) + integration tests (full E2E, user-memory isolation, reindex invalidation, Redis conversation).
+- [x] Live-infrastructure validation (2026-08-11): Docker PostgreSQL 16 + pgvector 0.8.6 + Redis 7.4 healthy; Alembic upgrade→downgrade→re-upgrade verified; **258 tests passing** with zero skips; `ruff check .` clean; app startup + routes; memory/context/Redis/pgvector/invalidation verified E2E.
+- [x] Genuine defects found and fixed during live validation: SQL adapter string→enum conversion; JSONB tag `@>` operator (was LIKE); `update()` lazy-reload after flush (`MissingGreenlet`).

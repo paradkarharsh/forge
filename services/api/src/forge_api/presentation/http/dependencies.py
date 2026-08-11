@@ -20,6 +20,9 @@ from forge_api.application.indexing.dependency_resolver import DependencyResolve
 from forge_api.application.indexing.file_discovery_service import FileDiscoveryService
 from forge_api.application.indexing.index_service import RepositoryIndexService
 from forge_api.application.indexing.search_service import SearchService
+from forge_api.application.memory.context_assembly_service import ContextAssemblyService
+from forge_api.application.memory.maintenance_service import MemoryMaintenanceService
+from forge_api.application.memory.memory_service import MemoryService
 from forge_api.application.repositories.background_jobs import BackgroundJobService
 from forge_api.application.repositories.clone_service import RepositoryCloneService
 from forge_api.application.repositories.import_service import RepositoryImportService
@@ -27,11 +30,17 @@ from forge_api.application.repositories.repository_service import RepositoryServ
 from forge_api.application.workspaces.workspace_service import WorkspaceService
 from forge_api.domain.errors import AuthenticationError, ServiceUnavailableError
 from forge_api.domain.indexing import IndexingConfig
+from forge_api.domain.memory import ContextRankingConfig
 from forge_api.domain.security import AccessClaims
 from forge_api.infrastructure.audit import AuditLogger
+from forge_api.infrastructure.conversation_context import (
+    NullConversationContextStore,
+    RedisConversationContextStore,
+)
 from forge_api.infrastructure.database import create_session_factory
 from forge_api.infrastructure.embedding import build_embedding_provider
 from forge_api.infrastructure.git import SubprocessGitClient
+from forge_api.infrastructure.memory_repository import SqlMemoryRepository
 from forge_api.infrastructure.oauth import OAuthStateManager
 from forge_api.infrastructure.oauth_identity_repository import (
     SqlOAuthIdentityRepository,
@@ -312,6 +321,7 @@ def _build_index_service(
         discovery=discovery,
         config=_indexing_config(settings),
         audit=audit,
+        memories=SqlMemoryRepository(db),
     )
 
 
@@ -356,6 +366,100 @@ def create_index_services(
         sync_jobs=SqlRepositorySyncJobRepository(db),
     )
     return index_service, jobs
+
+
+# ─── Context and memory engine ───────────────────────────────────────
+
+
+def get_memory_service(
+    db: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+    audit: AuditLogger = Depends(get_audit),
+) -> MemoryService:
+    return MemoryService(
+        memories=SqlMemoryRepository(db),
+        workspaces=SqlWorkspaceRepository(db),
+        embedding=build_embedding_provider(
+            settings.embedding_provider, settings.embedding_model
+        ),
+        audit=audit,
+        max_content_length=settings.memory_max_content_length,
+        max_tags=settings.memory_max_tags,
+    )
+
+
+def get_conversation_context_store(
+    cache: Redis = Depends(get_cache),
+    settings: Settings = Depends(get_settings),
+) -> RedisConversationContextStore:
+    return RedisConversationContextStore(
+        cache,
+        max_entries=settings.context_conversation_max_entries,
+        default_ttl_seconds=settings.context_conversation_ttl_seconds,
+    )
+
+
+def get_context_assembly_service(
+    db: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+    cache: Redis = Depends(get_cache),
+    audit: AuditLogger = Depends(get_audit),
+) -> ContextAssemblyService:
+    return ContextAssemblyService(
+        memories=SqlMemoryRepository(db),
+        search=get_search_service(db, settings),
+        conversation=_conversation_store(cache, settings),
+        embedding=build_embedding_provider(
+            settings.embedding_provider, settings.embedding_model
+        ),
+        workspaces=SqlWorkspaceRepository(db),
+        audit=audit,
+        ranking=ContextRankingConfig(
+            semantic_weight=settings.context_rank_semantic_weight,
+            recency_weight=settings.context_rank_recency_weight,
+            confidence_weight=settings.context_rank_confidence_weight,
+            scope_weight=settings.context_rank_scope_weight,
+            type_weight=settings.context_rank_type_weight,
+        ),
+        max_tokens=settings.context_max_tokens,
+        min_relevance=settings.context_min_relevance,
+        conversation_max_entries=settings.context_conversation_max_entries,
+    )
+
+
+def _conversation_store(
+    cache: Redis, settings: Settings,
+) -> RedisConversationContextStore | NullConversationContextStore:
+    """Build the conversation store, falling back to a no-op when Redis is down.
+
+    Context assembly must gracefully omit conversation context rather than
+    crash the entire request when the cache is unavailable.
+    """
+    if cache is None:
+        return NullConversationContextStore()
+    return RedisConversationContextStore(
+        cache,
+        max_entries=settings.context_conversation_max_entries,
+        default_ttl_seconds=settings.context_conversation_ttl_seconds,
+    )
+
+
+def create_memory_maintenance_services(
+    db: AsyncSession,
+) -> MemoryMaintenanceService:
+    """Build the memory maintenance service for a session.
+
+    Used by the background memory maintenance worker, which manages its
+    own sessions rather than going through request-scoped dependencies.
+    """
+    settings = get_settings()
+    return MemoryMaintenanceService(
+        memories=SqlMemoryRepository(db),
+        embedding=build_embedding_provider(
+            settings.embedding_provider, settings.embedding_model
+        ),
+        backfill_batch_size=settings.memory_embedding_backfill_batch_size,
+    )
 
 
 # ─── Request context helpers ────────────────────────────────────────

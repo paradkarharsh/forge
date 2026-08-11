@@ -11,6 +11,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Text,
     UniqueConstraint,
     func,
 )
@@ -317,3 +318,60 @@ class RepositoryChunkModel(Base):
     line_end: Mapped[int] = mapped_column(Integer)
     token_count: Mapped[int] = mapped_column(Integer)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(384))
+
+
+# ─── Context and memory engine models ─────────────────────────────────
+
+
+class MemoryModel(Base):
+    __tablename__ = "memories"
+    __table_args__ = (
+        Index("ix_memories_workspace_id", "workspace_id"),
+        Index("ix_memories_repository_id", "repository_id"),
+        Index("ix_memories_user_id", "user_id"),
+        Index("ix_memories_scope", "scope"),
+        Index("ix_memories_memory_type", "memory_type"),
+        Index("ix_memories_status", "status"),
+        Index("ix_memories_source_file_path", "source_file_path"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    workspace_id: Mapped[UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE")
+    )
+    repository_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("repositories.id", ondelete="SET NULL")
+    )
+    user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    memory_type: Mapped[str] = mapped_column(String(32))
+    scope: Mapped[str] = mapped_column(String(16))
+    status: Mapped[str] = mapped_column(String(16), default="active")
+    content: Mapped[str] = mapped_column(Text)
+    summary: Mapped[str | None] = mapped_column(String(1024))
+    source_file_path: Mapped[str | None] = mapped_column(String(2048))
+    source_symbol_name: Mapped[str | None] = mapped_column(String(512))
+    source_commit_hash: Mapped[str | None] = mapped_column(String(64))
+    confidence: Mapped[float] = mapped_column(default=1.0)
+    tags: Mapped[list] = mapped_column(JSONB, default=list)
+    embedding: Mapped[list[float] | None] = mapped_column(
+        Vector(384), name="embedding"
+    )
+    created_by: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    accessed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )

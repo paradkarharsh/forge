@@ -19,6 +19,10 @@ from forge_api.infrastructure.settings import Settings, get_settings
 from forge_api.presentation.http.auth import router as auth_router
 from forge_api.presentation.http.errors import register_exception_handlers
 from forge_api.presentation.http.health import router as health_router
+from forge_api.presentation.http.memory import (
+    context_router,
+    memory_router,
+)
 from forge_api.presentation.http.oauth import router as oauth_router
 from forge_api.presentation.http.repository import router as repository_router
 from forge_api.presentation.http.security_middleware import (
@@ -76,6 +80,21 @@ async def _index_worker_loop(settings: Settings) -> None:
     await worker.run()
 
 
+async def _memory_maintenance_loop(settings: Settings) -> None:
+    """Run the background memory maintenance worker."""
+    from forge_api.application.memory.memory_worker import MemoryMaintenanceWorker
+    from forge_api.presentation.http.dependencies import (
+        create_memory_maintenance_services,
+    )
+
+    worker = MemoryMaintenanceWorker(
+        session_factory=create_session_factory(settings),
+        create_services=create_memory_maintenance_services,
+        poll_seconds=settings.memory_maintenance_interval_seconds,
+    )
+    await worker.run()
+
+
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings = get_settings()
@@ -100,6 +119,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     ]
     if settings.index_worker_enabled:
         tasks.append(asyncio.create_task(_index_worker_loop(settings)))
+    if settings.memory_maintenance_worker_enabled:
+        tasks.append(asyncio.create_task(_memory_maintenance_loop(settings)))
 
     yield
 
@@ -142,6 +163,8 @@ def create_app() -> FastAPI:
     app.include_router(auth_router, prefix="/v1")
     app.include_router(workspace_router, prefix="/v1")
     app.include_router(repository_router, prefix="/v1")
+    app.include_router(memory_router, prefix="/v1")
+    app.include_router(context_router, prefix="/v1")
     app.include_router(oauth_router, prefix="/v1")
     app.include_router(sessions_router, prefix="/v1")
 

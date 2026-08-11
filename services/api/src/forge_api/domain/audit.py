@@ -42,6 +42,13 @@ class AuditEventType(StrEnum):
     REPOSITORY_DELETED = "repository.deleted"
     REPOSITORY_INDEXED = "repository.indexed"
     REPOSITORY_REINDEXED = "repository.reindexed"
+    MEMORY_CREATED = "memory.created"
+    MEMORY_UPDATED = "memory.updated"
+    MEMORY_DELETED = "memory.deleted"
+    MEMORY_ARCHIVED = "memory.archived"
+    MEMORY_STALE_MARKED = "memory.stale_marked"
+    MEMORY_SEARCHED = "memory.searched"
+    CONTEXT_ASSEMBLED = "context.assembled"
 
 
 @dataclass(frozen=True, slots=True)

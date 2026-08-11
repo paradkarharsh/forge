@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import PostgresDsn, RedisDsn, SecretStr
+from pydantic import Field, PostgresDsn, RedisDsn, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -46,6 +46,22 @@ class Settings(BaseSettings):
     # sentence-transformers all-MiniLM-L6-v2 model (384 dimensions).
     embedding_provider: str = "none"
     embedding_model: str = "all-MiniLM-L6-v2"
+
+    # Context and memory engine
+    memory_embedding_backfill_batch_size: int = Field(default=100, gt=0)
+    memory_maintenance_interval_seconds: int = Field(default=3600, gt=0)
+    memory_max_content_length: int = Field(default=16_384, gt=0)
+    memory_max_tags: int = Field(default=20, gt=0)
+    memory_maintenance_worker_enabled: bool = True
+    context_max_tokens: int = Field(default=8192, ge=256, le=65_536)
+    context_min_relevance: float = Field(default=0.1, ge=0.0, le=1.0)
+    context_conversation_max_entries: int = Field(default=100, gt=0)
+    context_conversation_ttl_seconds: int = Field(default=86_400, gt=0)
+    context_rank_semantic_weight: float = Field(default=0.40, ge=0.0, le=1.0)
+    context_rank_recency_weight: float = Field(default=0.20, ge=0.0, le=1.0)
+    context_rank_confidence_weight: float = Field(default=0.15, ge=0.0, le=1.0)
+    context_rank_scope_weight: float = Field(default=0.15, ge=0.0, le=1.0)
+    context_rank_type_weight: float = Field(default=0.10, ge=0.0, le=1.0)
 
 
 @lru_cache
