@@ -375,3 +375,105 @@ class MemoryModel(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True)
     )
+
+
+# ─── LLM conversation and usage models ───────────────────────────────
+
+
+class ConversationModel(Base):
+    __tablename__ = "conversations"
+    __table_args__ = (
+        Index("ix_conversations_workspace_id", "workspace_id"),
+        Index("ix_conversations_user_id", "user_id"),
+        Index("ix_conversations_status", "status"),
+        Index("ix_conversations_created_at", "created_at"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    workspace_id: Mapped[UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE")
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE")
+    )
+    title: Mapped[str | None] = mapped_column(String(500))
+    repository_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("repositories.id", ondelete="SET NULL")
+    )
+    status: Mapped[str] = mapped_column(String(16), default="active")
+    message_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class MessageModel(Base):
+    __tablename__ = "messages"
+    __table_args__ = (
+        Index("ix_messages_conversation_id", "conversation_id"),
+        Index("ix_messages_role", "role"),
+        Index("ix_messages_created_at", "created_at"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    conversation_id: Mapped[UUID] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE")
+    )
+    role: Mapped[str] = mapped_column(String(16))
+    content: Mapped[str] = mapped_column(Text)
+    provider: Mapped[str | None] = mapped_column(String(64))
+    model: Mapped[str | None] = mapped_column(String(128))
+    prompt_version: Mapped[str | None] = mapped_column(String(32))
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
+    total_tokens: Mapped[int | None] = mapped_column(Integer)
+    duration_ms: Mapped[float | None] = mapped_column()
+    finish_reason: Mapped[str | None] = mapped_column(String(32))
+    status: Mapped[str] = mapped_column(String(16), default="complete")
+    metadata_: Mapped[dict[str, Any] | None] = mapped_column(
+        "metadata",
+        JSON().with_variant(JSONB, "postgresql"),
+        default=dict,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class UsageEventModel(Base):
+    __tablename__ = "usage_events"
+    __table_args__ = (
+        Index("ix_usage_events_workspace_id", "workspace_id"),
+        Index("ix_usage_events_user_id", "user_id"),
+        Index("ix_usage_events_provider", "provider"),
+        Index("ix_usage_events_model", "model"),
+        Index("ix_usage_events_created_at", "created_at"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    workspace_id: Mapped[UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE")
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE")
+    )
+    conversation_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("conversations.id", ondelete="SET NULL")
+    )
+    message_id: Mapped[UUID | None] = mapped_column()
+    provider: Mapped[str] = mapped_column(String(64))
+    model: Mapped[str] = mapped_column(String(128))
+    input_tokens: Mapped[int] = mapped_column(Integer)
+    output_tokens: Mapped[int] = mapped_column(Integer)
+    total_tokens: Mapped[int] = mapped_column(Integer)
+    duration_ms: Mapped[float] = mapped_column()
+    estimated_cost: Mapped[float] = mapped_column(default=0.0)
+    metadata_: Mapped[dict[str, Any] | None] = mapped_column(
+        "metadata",
+        JSON().with_variant(JSONB, "postgresql"),
+        default=dict,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )

@@ -8,6 +8,11 @@ from typing import Protocol
 from uuid import UUID
 
 from forge_api.domain.auth import WorkspaceRole
+from forge_api.domain.conversation import (
+    ConversationRecord,
+    MessageRecord,
+    UsageEventRecord,
+)
 from forge_api.domain.indexing import (
     ChunkRecord,
     DependencyRecord,
@@ -456,3 +461,140 @@ class ConversationContextStore(Protocol):
     async def set_ttl(
         self, session_id: UUID, conversation_id: UUID, ttl_seconds: int,
     ) -> None: ...
+
+
+# ─── Conversation history (persistent, PostgreSQL) ────────────────────
+
+
+class ConversationRepository(Protocol):
+    """Durable conversation store port."""
+
+    async def get(self, conversation_id: UUID) -> ConversationRecord | None: ...
+
+    async def list_by_workspace(
+        self,
+        workspace_id: UUID,
+        user_id: UUID,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        include_deleted: bool = False,
+    ) -> list[ConversationRecord]: ...
+
+    async def count_by_workspace(
+        self,
+        workspace_id: UUID,
+        user_id: UUID,
+        *,
+        include_deleted: bool = False,
+    ) -> int: ...
+
+    async def create(
+        self,
+        *,
+        workspace_id: UUID,
+        user_id: UUID,
+        title: str | None = None,
+        repository_id: UUID | None = None,
+    ) -> ConversationRecord: ...
+
+    async def update_title(
+        self, conversation_id: UUID, title: str,
+    ) -> ConversationRecord | None: ...
+
+    async def increment_message_count(
+        self, conversation_id: UUID,
+    ) -> bool: ...
+
+    async def soft_delete(self, conversation_id: UUID) -> bool: ...
+
+
+class MessageRepository(Protocol):
+    """Durable message store port."""
+
+    async def get(self, message_id: UUID) -> MessageRecord | None: ...
+
+    async def list_by_conversation(
+        self,
+        conversation_id: UUID,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[MessageRecord]: ...
+
+    async def count_by_conversation(
+        self, conversation_id: UUID,
+    ) -> int: ...
+
+    async def create(
+        self,
+        *,
+        conversation_id: UUID,
+        role: str,
+        content: str,
+        provider: str | None = None,
+        model: str | None = None,
+        prompt_version: str | None = None,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+        total_tokens: int | None = None,
+        duration_ms: float | None = None,
+        finish_reason: str | None = None,
+        status: str = "complete",
+        metadata: dict | None = None,
+    ) -> MessageRecord: ...
+
+    async def update(
+        self,
+        message_id: UUID,
+        *,
+        content: str | None = None,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+        total_tokens: int | None = None,
+        duration_ms: float | None = None,
+        finish_reason: str | None = None,
+        status: str | None = None,
+        metadata: dict | None = None,
+    ) -> MessageRecord | None: ...
+
+
+class UsageEventRepository(Protocol):
+    """Usage event store port."""
+
+    async def create(
+        self,
+        *,
+        workspace_id: UUID,
+        user_id: UUID,
+        conversation_id: UUID | None = None,
+        message_id: UUID | None = None,
+        provider: str,
+        model: str,
+        input_tokens: int,
+        output_tokens: int,
+        total_tokens: int,
+        duration_ms: float,
+        estimated_cost: float,
+        metadata: dict | None = None,
+    ) -> UsageEventRecord: ...
+
+    async def list_by_workspace(
+        self,
+        workspace_id: UUID,
+        *,
+        user_id: UUID | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[UsageEventRecord]: ...
+
+    async def aggregate_by_workspace(
+        self,
+        workspace_id: UUID,
+        *,
+        user_id: UUID | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> dict: ...

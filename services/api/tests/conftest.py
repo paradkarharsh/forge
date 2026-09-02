@@ -481,7 +481,11 @@ def test_client(monkeypatch) -> TestClient:
     get_settings.cache_clear()
     from forge_api.presentation.http.app import create_app
 
-    return TestClient(create_app(), raise_server_exceptions=False)
+    return TestClient(
+        create_app(),
+        base_url="http://localhost",
+        raise_server_exceptions=False,
+    )
 
 
 # ─── Fake repository domain repositories ────────────────────────────

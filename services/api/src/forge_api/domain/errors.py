@@ -85,3 +85,62 @@ class ServiceUnavailableError(ForgeError):
 
     status_code = 503
     code = "service_unavailable"
+
+
+# ─── LLM-specific errors ─────────────────────────────────────────────
+
+
+class ProviderUnavailableError(ForgeError):
+    """The LLM provider is not reachable."""
+
+    status_code = 503
+    code = "provider_unavailable"
+
+
+class LLMAuthError(ForgeError):
+    """Provider rejected the API key / credentials."""
+
+    status_code = 401
+    code = "llm_auth_failed"
+
+
+class ProviderRateLimitedError(ForgeError):
+    """The LLM provider returned a rate-limit response."""
+
+    status_code = 429
+    code = "provider_rate_limited"
+
+
+class LLMTimeoutError(ForgeError):
+    """The LLM call timed out."""
+
+    status_code = 504
+    code = "llm_timeout"
+
+
+class ContextTooLargeError(ForgeError):
+    """The assembled context exceeds the model's context window."""
+
+    status_code = 422
+    code = "context_too_large"
+
+
+class ModelUnavailableError(ForgeError):
+    """The requested model is not registered or not enabled."""
+
+    status_code = 404
+    code = "model_unavailable"
+
+
+class ProviderError(ForgeError):
+    """An unclassified error from the LLM provider."""
+
+    status_code = 502
+    code = "provider_error"
+
+
+class CancelledError(ForgeError):
+    """The operation was cancelled (client disconnect, etc.)."""
+
+    status_code = 499
+    code = "cancelled"

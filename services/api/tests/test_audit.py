@@ -91,6 +91,14 @@ class TestAuditEventTypes:
             "memory.stale_marked",
             "memory.searched",
             "context.assembled",
+            "conversation.created",
+            "conversation.deleted",
+            "llm.completion",
+            "llm.stream_start",
+            "llm.stream_complete",
+            "llm.stream_error",
+            "llm.error",
+            "llm.cancelled",
         }
         actual = {member.value for member in AuditEventType}
         assert expected == actual
