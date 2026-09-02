@@ -48,6 +48,9 @@ class SyncJobType(StrEnum):
     CLONE = "clone"
     SYNC = "sync"
     INDEX = "index"
+    AGENT_EXECUTE = "agent_execute"
+    AGENT_RESUME = "agent_resume"
+
 
 
 @dataclass(frozen=True, slots=True)

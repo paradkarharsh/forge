@@ -3,8 +3,9 @@
 Domain services depend on these interfaces; infrastructure adapters
 implement them with concrete persistence engines (currently SQLAlchemy).
 """
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Protocol
+from typing import Any, Protocol
 from uuid import UUID
 
 from forge_api.domain.agent import (
@@ -759,6 +760,11 @@ class AgentApprovalRepository(Protocol):
         self, session_id: UUID
     ) -> list[AgentApprovalRecord]: ...
 
+    async def list_by_session(
+        self, session_id: UUID
+    ) -> list[AgentApprovalRecord]: ...
+
+
     async def create(
         self,
         *,
@@ -780,4 +786,47 @@ class AgentApprovalRepository(Protocol):
         reason: str | None = None,
         decided_at: datetime | None = None,
     ) -> AgentApprovalRecord | None: ...
+
+
+# ─── Agent Job Queue Port ─────────────────────────────────────────────
+
+
+@dataclass(frozen=True, slots=True)
+class AgentJobRecord:
+    """Durable background job record for agent execution or resumption."""
+
+    id: UUID
+    session_id: UUID
+    job_type: str
+    status: str
+    created_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    error_message: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+class AgentJobQueue(Protocol):
+    """Port for durable PostgreSQL-backed agent job claiming and lifecycle."""
+
+    async def enqueue(
+        self,
+        session_id: UUID,
+        job_type: str,
+        *,
+        metadata: dict[str, Any] | None = None,
+    ) -> AgentJobRecord: ...
+
+    async def claim_next(
+        self, job_types: list[str] | None = None
+    ) -> AgentJobRecord | None: ...
+
+    async def start(self, job_id: UUID) -> AgentJobRecord | None: ...
+
+    async def complete(self, job_id: UUID) -> AgentJobRecord | None: ...
+
+    async def fail(
+        self, job_id: UUID, *, error_message: str | None = None
+    ) -> AgentJobRecord | None: ...
+
 

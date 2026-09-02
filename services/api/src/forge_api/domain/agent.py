@@ -6,7 +6,7 @@ Provider SDKs, SQLAlchemy models, and presentation types must NEVER appear here.
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 from uuid import UUID
 
 from forge_api.domain.errors import DomainError
@@ -66,6 +66,8 @@ VALID_AGENT_STATUS_TRANSITIONS: dict[AgentStatus, frozenset[AgentStatus]] = {
         AgentStatus.PLANNING,
         AgentStatus.CANCELLED,
     }),
+
+
     AgentStatus.PLANNING: frozenset({
         AgentStatus.RUNNING,
         AgentStatus.FAILED,
@@ -198,3 +200,62 @@ class AgentToolCallRecord:
     started_at: datetime | None = None
     completed_at: datetime | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+# ─── Agent Events & Model Decision ────────────────────────────────────
+
+
+class AgentEventType(StrEnum):
+    """Event types emitted during agent execution lifecycle."""
+
+    CREATED = "agent.created"
+    STARTED = "agent.started"
+    STEP_STARTED = "agent.step.started"
+    STEP_COMPLETED = "agent.step.completed"
+    TOOL_STARTED = "agent.tool.started"
+    TOOL_COMPLETED = "agent.tool.completed"
+    TOOL_FAILED = "agent.tool.failed"
+    APPROVAL_REQUIRED = "agent.approval.required"
+    APPROVAL_GRANTED = "agent.approval.granted"
+    APPROVAL_DENIED = "agent.approval.denied"
+    COMPLETED = "agent.completed"
+    FAILED = "agent.failed"
+    CANCELLED = "agent.cancelled"
+    TIMED_OUT = "agent.timed_out"
+
+
+@dataclass(frozen=True, slots=True)
+class AgentEvent:
+    """Domain event emitted across the agent execution lifecycle."""
+
+    event_type: AgentEventType
+    session_id: UUID
+    timestamp: datetime
+    data: dict[str, Any] = field(default_factory=dict)
+
+
+@runtime_checkable
+class AgentEventPublisher(Protocol):
+    """Port for publishing agent lifecycle domain events."""
+
+    async def publish(self, event: AgentEvent) -> None:
+        """Publish a lifecycle event."""
+        ...
+
+
+class ModelDecisionType(StrEnum):
+    """Types of structured decisions proposed by the model."""
+
+    TOOL_CALL = "tool_call"
+    COMPLETE = "complete"
+
+
+@dataclass(frozen=True, slots=True)
+class ModelDecision:
+    """Strict structured decision parsed from the model."""
+
+    type: ModelDecisionType
+    tool_name: str | None = None
+    arguments: dict[str, Any] = field(default_factory=dict)
+    reason: str | None = None
+
