@@ -7,6 +7,20 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
+from forge_api.domain.agent import (
+    AgentLimits,
+    AgentSessionRecord,
+    AgentStatus,
+    AgentStepRecord,
+    AgentToolCallRecord,
+    ExecutionMetrics,
+    StepStatus,
+    ToolCallStatus,
+)
+from forge_api.domain.approval import (
+    AgentApprovalRecord,
+    ApprovalStatus,
+)
 from forge_api.domain.auth import WorkspaceRole
 from forge_api.domain.conversation import (
     ConversationRecord,
@@ -30,6 +44,7 @@ from forge_api.domain.repository import (
     SyncJobRecord,
 )
 from forge_api.domain.sessions import SessionRecord
+from forge_api.domain.tool import RiskLevel
 from forge_api.domain.users import OAuthIdentityRecord, UserRecord
 from forge_api.domain.workspaces import MembershipRecord, WorkspaceRecord
 
@@ -598,3 +613,171 @@ class UsageEventRepository(Protocol):
         start: datetime | None = None,
         end: datetime | None = None,
     ) -> dict: ...
+
+
+# ─── FP8 Agentic Engine Ports ─────────────────────────────────────────
+
+
+class AgentSessionRepository(Protocol):
+    """Port for agent session persistence."""
+
+    async def get(self, session_id: UUID) -> AgentSessionRecord | None: ...
+
+    async def list_by_workspace(
+        self,
+        workspace_id: UUID,
+        *,
+        user_id: UUID | None = None,
+        repository_id: UUID | None = None,
+        status: AgentStatus | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[AgentSessionRecord]: ...
+
+    async def count_by_workspace(
+        self,
+        workspace_id: UUID,
+        *,
+        user_id: UUID | None = None,
+        repository_id: UUID | None = None,
+        status: AgentStatus | None = None,
+    ) -> int: ...
+
+    async def create(
+        self,
+        *,
+        workspace_id: UUID,
+        user_id: UUID,
+        objective: str,
+        status: AgentStatus = AgentStatus.CREATED,
+        repository_id: UUID | None = None,
+        conversation_id: UUID | None = None,
+        model: str | None = None,
+        limits: AgentLimits | None = None,
+        metrics: ExecutionMetrics | None = None,
+        metadata: dict | None = None,
+    ) -> AgentSessionRecord: ...
+
+    async def update_status(
+        self,
+        session_id: UUID,
+        status: AgentStatus,
+        *,
+        started_at: datetime | None = None,
+        completed_at: datetime | None = None,
+        cancelled_at: datetime | None = None,
+    ) -> AgentSessionRecord | None: ...
+
+    async def update_metrics(
+        self,
+        session_id: UUID,
+        metrics: ExecutionMetrics,
+        *,
+        current_step: int | None = None,
+    ) -> AgentSessionRecord | None: ...
+
+    async def soft_delete(self, session_id: UUID) -> bool: ...
+
+
+class AgentStepRepository(Protocol):
+    """Port for agent plan step persistence."""
+
+    async def get(self, step_id: UUID) -> AgentStepRecord | None: ...
+
+    async def list_by_session(
+        self, session_id: UUID
+    ) -> list[AgentStepRecord]: ...
+
+    async def create(
+        self,
+        *,
+        session_id: UUID,
+        sequence: int,
+        objective: str,
+        status: StepStatus = StepStatus.PENDING,
+        metadata: dict | None = None,
+    ) -> AgentStepRecord: ...
+
+    async def update_status(
+        self,
+        step_id: UUID,
+        status: StepStatus,
+        *,
+        started_at: datetime | None = None,
+        completed_at: datetime | None = None,
+    ) -> AgentStepRecord | None: ...
+
+
+class AgentToolCallRepository(Protocol):
+    """Port for agent tool execution record persistence."""
+
+    async def get(self, tool_call_id: UUID) -> AgentToolCallRecord | None: ...
+
+    async def list_by_session(
+        self,
+        session_id: UUID,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[AgentToolCallRecord]: ...
+
+    async def create(
+        self,
+        *,
+        session_id: UUID,
+        tool_name: str,
+        arguments: dict,
+        risk_level: RiskLevel,
+        status: ToolCallStatus = ToolCallStatus.PENDING_APPROVAL,
+        step_id: UUID | None = None,
+        approval_id: UUID | None = None,
+        metadata: dict | None = None,
+    ) -> AgentToolCallRecord: ...
+
+    async def complete(
+        self,
+        tool_call_id: UUID,
+        *,
+        status: ToolCallStatus,
+        output: str | None = None,
+        error_message: str | None = None,
+        duration_ms: float | None = None,
+        completed_at: datetime | None = None,
+    ) -> AgentToolCallRecord | None: ...
+
+
+class AgentApprovalRepository(Protocol):
+    """Port for agent human approval request and decision persistence."""
+
+    async def get(self, approval_id: UUID) -> AgentApprovalRecord | None: ...
+
+    async def get_by_tool_call(
+        self, tool_call_id: UUID
+    ) -> AgentApprovalRecord | None: ...
+
+    async def list_pending_by_session(
+        self, session_id: UUID
+    ) -> list[AgentApprovalRecord]: ...
+
+    async def create(
+        self,
+        *,
+        session_id: UUID,
+        tool_call_id: UUID,
+        tool_name: str,
+        arguments_hash: str,
+        requested_by: UUID | None = None,
+        expires_at: datetime | None = None,
+        metadata: dict | None = None,
+    ) -> AgentApprovalRecord: ...
+
+    async def decide(
+        self,
+        approval_id: UUID,
+        *,
+        status: ApprovalStatus,
+        decided_by: UUID,
+        reason: str | None = None,
+        decided_at: datetime | None = None,
+    ) -> AgentApprovalRecord | None: ...
+
