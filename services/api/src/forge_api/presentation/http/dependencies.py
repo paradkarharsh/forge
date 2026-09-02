@@ -20,6 +20,10 @@ from forge_api.application.indexing.dependency_resolver import DependencyResolve
 from forge_api.application.indexing.file_discovery_service import FileDiscoveryService
 from forge_api.application.indexing.index_service import RepositoryIndexService
 from forge_api.application.indexing.search_service import SearchService
+from forge_api.application.llm.conversation_service import ConversationService
+from forge_api.application.llm.gateway import LLMGateway
+from forge_api.application.llm.prompt_builder import PromptBuilder
+from forge_api.application.llm.usage_tracker import UsageTracker
 from forge_api.application.memory.context_assembly_service import ContextAssemblyService
 from forge_api.application.memory.maintenance_service import MemoryMaintenanceService
 from forge_api.application.memory.memory_service import MemoryService
@@ -40,6 +44,7 @@ from forge_api.infrastructure.conversation_context import (
 from forge_api.infrastructure.database import create_session_factory
 from forge_api.infrastructure.embedding import build_embedding_provider
 from forge_api.infrastructure.git import SubprocessGitClient
+from forge_api.infrastructure.llm.model_registry import ModelRegistry
 from forge_api.infrastructure.memory_repository import SqlMemoryRepository
 from forge_api.infrastructure.oauth import OAuthStateManager
 from forge_api.infrastructure.oauth_identity_repository import (
@@ -459,6 +464,79 @@ def create_memory_maintenance_services(
             settings.embedding_provider, settings.embedding_model
         ),
         backfill_batch_size=settings.memory_embedding_backfill_batch_size,
+    )
+
+
+# ─── LLM / AI ───────────────────────────────────────────────────────
+
+
+def get_model_registry() -> ModelRegistry:
+    return ModelRegistry()
+
+
+def _build_llm_providers(settings: Settings) -> dict:
+    from forge_api.infrastructure.llm import FakeLLMProvider
+    from forge_api.infrastructure.llm.ollama_provider import OllamaProvider
+    from forge_api.infrastructure.llm.openai_provider import OpenAICompatibleProvider
+
+    providers: dict = {"fake": FakeLLMProvider()}
+    if settings.llm_openai_api_key:
+        providers["openai"] = OpenAICompatibleProvider(
+            api_key=settings.llm_openai_api_key.get_secret_value(),
+            base_url=settings.llm_openai_base_url,
+        )
+    providers["ollama"] = OllamaProvider(base_url=settings.llm_ollama_base_url)
+    return providers
+
+
+def get_llm_gateway(
+    db: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+    audit: AuditLogger = Depends(get_audit),
+) -> LLMGateway:
+    return LLMGateway(
+        registry=ModelRegistry(),
+        providers=_build_llm_providers(settings),
+        audit=audit,
+        timeout_seconds=settings.llm_request_timeout_seconds,
+        max_retries=settings.llm_max_retries,
+    )
+
+
+def get_usage_tracker(
+    db: AsyncSession = Depends(get_session),
+) -> UsageTracker:
+    from forge_api.infrastructure.usage_repository import SqlUsageEventRepository
+
+    return UsageTracker(
+        usage_repo=SqlUsageEventRepository(db),
+        registry=ModelRegistry(),
+    )
+
+
+def get_conversation_service(
+    db: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+    cache: Redis = Depends(get_cache),
+    audit: AuditLogger = Depends(get_audit),
+    gateway: LLMGateway = Depends(get_llm_gateway),
+    tracker: UsageTracker = Depends(get_usage_tracker),
+) -> ConversationService:
+    from forge_api.infrastructure.conversation_repository import (
+        SqlConversationRepository,
+    )
+    from forge_api.infrastructure.message_repository import SqlMessageRepository
+    from forge_api.infrastructure.usage_repository import SqlUsageEventRepository
+
+    return ConversationService(
+        conversations=SqlConversationRepository(db),
+        messages=SqlMessageRepository(db),
+        usage_events=SqlUsageEventRepository(db),
+        gateway=gateway,
+        prompt_builder=PromptBuilder(version=settings.prompt_version),
+        usage_tracker=tracker,
+        registry=ModelRegistry(),
+        audit=audit,
     )
 
 

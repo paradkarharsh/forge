@@ -19,6 +19,11 @@ from forge_api.infrastructure.settings import Settings, get_settings
 from forge_api.presentation.http.auth import router as auth_router
 from forge_api.presentation.http.errors import register_exception_handlers
 from forge_api.presentation.http.health import router as health_router
+from forge_api.presentation.http.llm import (
+    conversation_router,
+    llm_router,
+    usage_router,
+)
 from forge_api.presentation.http.memory import (
     context_router,
     memory_router,
@@ -165,6 +170,9 @@ def create_app() -> FastAPI:
     app.include_router(repository_router, prefix="/v1")
     app.include_router(memory_router, prefix="/v1")
     app.include_router(context_router, prefix="/v1")
+    app.include_router(llm_router, prefix="/v1")
+    app.include_router(conversation_router, prefix="/v1")
+    app.include_router(usage_router, prefix="/v1")
     app.include_router(oauth_router, prefix="/v1")
     app.include_router(sessions_router, prefix="/v1")
 

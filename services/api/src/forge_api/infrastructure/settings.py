@@ -63,6 +63,23 @@ class Settings(BaseSettings):
     context_rank_scope_weight: float = Field(default=0.15, ge=0.0, le=1.0)
     context_rank_type_weight: float = Field(default=0.10, ge=0.0, le=1.0)
 
+    # ─── LLM / AI ──────────────────────────────────────────────────────
+    llm_default_model: str = "fake/echo"
+    llm_default_temperature: float = Field(default=0.7, ge=0.0, le=2.0)
+    llm_default_max_tokens: int = Field(default=4096, gt=0, le=128_000)
+    llm_request_timeout_seconds: int = Field(default=120, gt=0)
+    llm_max_retries: int = Field(default=3, ge=0, le=10)
+    llm_max_query_length: int = Field(default=32_768, gt=0)
+    llm_max_output_tokens: int = Field(default=16_384, gt=0)
+
+    # Provider API keys — NEVER stored in PostgreSQL.
+    llm_openai_api_key: SecretStr | None = None
+    llm_openai_base_url: str = "https://api.openai.com/v1"
+    llm_ollama_base_url: str = "http://localhost:11434"
+
+    # Prompt builder
+    prompt_version: str = "1.0.0"
+
 
 @lru_cache
 def get_settings() -> Settings:

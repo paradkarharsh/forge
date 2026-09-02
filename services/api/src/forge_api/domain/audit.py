@@ -49,6 +49,14 @@ class AuditEventType(StrEnum):
     MEMORY_STALE_MARKED = "memory.stale_marked"
     MEMORY_SEARCHED = "memory.searched"
     CONTEXT_ASSEMBLED = "context.assembled"
+    CONVERSATION_CREATED = "conversation.created"
+    CONVERSATION_DELETED = "conversation.deleted"
+    LLM_COMPLETION = "llm.completion"
+    LLM_STREAM_START = "llm.stream_start"
+    LLM_STREAM_COMPLETE = "llm.stream_complete"
+    LLM_STREAM_ERROR = "llm.stream_error"
+    LLM_ERROR = "llm.error"
+    LLM_CANCELLED = "llm.cancelled"
 
 
 @dataclass(frozen=True, slots=True)
