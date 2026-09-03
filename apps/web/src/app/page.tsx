@@ -20,7 +20,7 @@ import { ForgeLogo } from '@/components/brand/forge-logo';
 import { ThemeToggle } from '@/components/theme/theme-toggle';
 
 export default function HomePage() {
-  const demoWorkspaceId = '00000000-0000-0000-0000-000000000001';
+  const demoWorkspaceId = 'default';
   const [previewTab, setPreviewTab] = useState<'activity' | 'files' | 'diff'>('activity');
 
   return (

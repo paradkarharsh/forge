@@ -2,7 +2,10 @@ import { CreateAgentForm } from '@/components/agent/create-agent-form';
 import { AppShell } from '@/components/layout/app-shell';
 
 export function generateStaticParams() {
-  return [{ workspaceId: 'default' }];
+  return [
+    { workspaceId: 'default' },
+    { workspaceId: '00000000-0000-0000-0000-000000000001' },
+  ];
 }
 
 export default async function NewWorkspaceAgentPage({
