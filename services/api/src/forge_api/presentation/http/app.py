@@ -16,6 +16,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from forge_api.infrastructure.cache import create_cache_client
 from forge_api.infrastructure.database import create_session_factory
 from forge_api.infrastructure.settings import Settings, get_settings
+from forge_api.presentation.http.agent import agent_router
 from forge_api.presentation.http.auth import router as auth_router
 from forge_api.presentation.http.errors import register_exception_handlers
 from forge_api.presentation.http.health import router as health_router
@@ -175,5 +176,7 @@ def create_app() -> FastAPI:
     app.include_router(usage_router, prefix="/v1")
     app.include_router(oauth_router, prefix="/v1")
     app.include_router(sessions_router, prefix="/v1")
+    app.include_router(agent_router, prefix="/v1")
 
     return app
+

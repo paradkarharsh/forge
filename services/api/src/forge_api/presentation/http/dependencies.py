@@ -12,6 +12,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from forge_api.application.agent.agent_service import AgentService
 from forge_api.application.auth.auth_service import AuthService
 from forge_api.application.auth.oauth_service import OAuthService
 from forge_api.application.auth.session_service import SessionService
@@ -122,6 +123,11 @@ def get_cache(request: Request) -> Redis:
     if cache is None:
         raise ServiceUnavailableError("Cache is unavailable")
     return cache
+
+
+def get_cache_client_optional(request: Request) -> Redis | None:
+    return getattr(request.app.state, "cache", None)
+
 
 
 # ─── Audit ──────────────────────────────────────────────────────────
@@ -540,6 +546,56 @@ def get_conversation_service(
     )
 
 
+# ─── Agent Engine Dependencies (FP8) ─────────────────────────────────
+
+
+def get_agent_service(
+    db: AsyncSession = Depends(get_session),
+    cache: Redis | None = Depends(get_cache_client_optional),
+) -> AgentService:
+    from forge_api.infrastructure.agent.event_publisher import (
+        NullAgentEventPublisher,
+        RedisAgentEventPublisher,
+    )
+    from forge_api.infrastructure.agent_approval_repository import (
+        SqlAgentApprovalRepository,
+    )
+    from forge_api.infrastructure.agent_job_queue import SqlAgentJobQueue
+    from forge_api.infrastructure.agent_session_repository import (
+        SqlAgentSessionRepository,
+    )
+    from forge_api.infrastructure.agent_step_repository import (
+        SqlAgentStepRepository,
+    )
+    from forge_api.infrastructure.agent_tool_call_repository import (
+        SqlAgentToolCallRepository,
+    )
+    from forge_api.infrastructure.repository_repository import (
+        SqlRepositoryRepository,
+    )
+    from forge_api.infrastructure.workers.agent_worker import (
+        RedisAgentCoordinator,
+    )
+    from forge_api.infrastructure.workspace_repository import (
+        SqlWorkspaceRepository,
+    )
+
+    coordinator = RedisAgentCoordinator(cache) if cache else None
+    publisher = RedisAgentEventPublisher(cache) if cache else NullAgentEventPublisher()
+
+    return AgentService(
+        sessions=SqlAgentSessionRepository(db),
+        steps=SqlAgentStepRepository(db),
+        tool_calls=SqlAgentToolCallRepository(db),
+        approvals=SqlAgentApprovalRepository(db),
+        workspaces=SqlWorkspaceRepository(db),
+        repositories=SqlRepositoryRepository(db),
+        job_queue=SqlAgentJobQueue(db),
+        coordinator=coordinator,
+        event_publisher=publisher,
+    )
+
+
 # ─── Request context helpers ────────────────────────────────────────
 
 
@@ -553,3 +609,4 @@ def client_user_agent(request: Request) -> str | None:
 
 def client_device_name(request: Request) -> str | None:
     return request.headers.get("sec-ch-ua-platform")
+
