@@ -8,6 +8,7 @@ Integrates:
 - Deterministic approval suspension and cryptographic argument hash resumption
 - Cancellation and cumulative execution limits
 """
+
 import hmac
 import logging
 import time
@@ -38,6 +39,7 @@ from forge_api.domain.approval import (
     ApprovalStatus,
     compute_arguments_hash,
 )
+from forge_api.domain.audit import AuditEventType
 from forge_api.domain.auth import WorkspaceRole
 from forge_api.domain.errors import (
     DomainError,
@@ -55,6 +57,7 @@ from forge_api.domain.repositories import (
 )
 from forge_api.domain.tool import (
     ToolExecutionContext,
+    redact_secrets,
 )
 
 logger = logging.getLogger(__name__)
@@ -90,6 +93,8 @@ class AgentOrchestrator:
         cancellation_checker: CancellationChecker | None = None,
         context_adapter: AgentContextAdapter | None = None,
         decision_parser: ModelDecisionParser | None = None,
+        audit: Any | None = None,
+        usage_tracker: Any | None = None,
     ) -> None:
         self._sessions = sessions
         self._steps = steps
@@ -106,6 +111,69 @@ class AgentOrchestrator:
         self._cancellation_checker = cancellation_checker
         self._context_adapter = context_adapter or AgentContextAdapter()
         self._decision_parser = decision_parser or ModelDecisionParser()
+        self._audit = audit
+        self._usage_tracker = usage_tracker
+
+    def _audit_log(
+        self,
+        event_type: AuditEventType,
+        session: AgentSessionRecord,
+        *,
+        reason: str | None = None,
+        payload: dict[str, Any] | None = None,
+    ) -> None:
+        """Safely record an audit event without secrets or raw reasoning."""
+        if not self._audit:
+            return
+        safe_payload = {
+            "workspace_id": str(session.workspace_id),
+            "repository_id": str(session.repository_id) if session.repository_id else None,
+            "session_id": str(session.id),
+        }
+        if payload:
+            for k, v in payload.items():
+                if k in (
+                    "chain_of_thought",
+                    "thought",
+                    "reasoning",
+                    "secret",
+                    "password",
+                    "token",
+                    "api_key",
+                ):
+                    continue
+                if isinstance(v, str):
+                    safe_payload[k] = redact_secrets(v)[:500]
+                elif isinstance(v, (int, float, bool)):
+                    safe_payload[k] = v
+                elif isinstance(v, dict):
+                    safe_payload[k] = {
+                        sk: redact_secrets(str(sv))[:200] if isinstance(sv, str) else sv
+                        for sk, sv in v.items()
+                        if sk
+                        not in (
+                            "chain_of_thought",
+                            "thought",
+                            "reasoning",
+                            "secret",
+                            "password",
+                            "token",
+                            "api_key",
+                        )
+                    }
+
+        try:
+            self._audit.log(
+                event_type,
+                user_id=session.user_id,
+                session_id=session.id,
+                reason=reason,
+                payload=safe_payload,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to record audit event %s for session %s: %s", event_type, session.id, exc
+            )
 
     async def run_session(self, session_id: UUID) -> AgentSessionRecord:
         """Run an agent session loop to completion or until suspended for approval."""
@@ -136,6 +204,8 @@ class AgentOrchestrator:
                 AgentStatus.PLANNING,
                 started_at=session.started_at or datetime.now(UTC),
             )
+            await self._emit(AgentEventType.PLANNING_STARTED, session_id)
+            self._audit_log(AuditEventType.AGENT_PLANNING_STARTED, session)
         if session.status == AgentStatus.PLANNING:
             validate_agent_transition(session.status, AgentStatus.RUNNING)
             session = await self._sessions.update_status(
@@ -144,15 +214,14 @@ class AgentOrchestrator:
                 started_at=session.started_at or datetime.now(UTC),
             )
             await self._emit(AgentEventType.STARTED, session_id)
-
+            await self._emit(AgentEventType.RUNNING, session_id)
+            self._audit_log(AuditEventType.AGENT_RUNNING, session)
 
         # Resolve authoritative repo root
         repo_root = await self._resolve_repo_root(session.repository_id)
 
         # Resolve workspace role
-        user_role = await self._resolve_user_role(
-            session.workspace_id, session.user_id
-        )
+        user_role = await self._resolve_user_role(session.workspace_id, session.user_id)
 
         return await self._orchestration_loop(session, repo_root, user_role)
 
@@ -179,7 +248,6 @@ class AgentOrchestrator:
                 code="no_approval_found",
             )
         approval = max(approvals, key=lambda a: a.requested_at)
-
 
         # 1. Check expiration
         now = datetime.now(UTC)
@@ -213,13 +281,9 @@ class AgentOrchestrator:
             )
 
             validate_agent_transition(session.status, AgentStatus.RUNNING)
-            session = await self._sessions.update_status(
-                session_id, AgentStatus.RUNNING
-            )
+            session = await self._sessions.update_status(session_id, AgentStatus.RUNNING)
             repo_root = await self._resolve_repo_root(session.repository_id)
-            user_role = await self._resolve_user_role(
-                session.workspace_id, session.user_id
-            )
+            user_role = await self._resolve_user_role(session.workspace_id, session.user_id)
             return await self._orchestration_loop(
                 session, repo_root, user_role, initial_observation=denial_obs
             )
@@ -247,7 +311,6 @@ class AgentOrchestrator:
 
         recomputed_hash = compute_arguments_hash(tool_call.arguments)
         if not hmac.compare_digest(recomputed_hash, approval.arguments_hash):
-
             logger.error(
                 "Cryptographic argument hash mismatch for session %s, tool call %s",
                 session_id,
@@ -271,11 +334,20 @@ class AgentOrchestrator:
         validate_agent_transition(session.status, AgentStatus.RUNNING)
         session = await self._sessions.update_status(session_id, AgentStatus.RUNNING)
         await self._emit(AgentEventType.APPROVAL_GRANTED, session_id)
+        await self._emit(AgentEventType.RESUMED, session_id)
+        self._audit_log(AuditEventType.AGENT_RESUMED, session, reason="approval_granted")
 
         repo_root = await self._resolve_repo_root(session.repository_id)
-        user_role = await self._resolve_user_role(
-            session.workspace_id, session.user_id
-        )
+        user_role = await self._resolve_user_role(session.workspace_id, session.user_id)
+
+        # Enforce cumulative tool call limit before executing tool
+        if session.metrics.total_tool_calls >= session.limits.max_tool_calls:
+            return await self._handle_timeout(
+                session,
+                session.metrics,
+                session.metrics.wall_time_seconds,
+                "Max tool calls exceeded.",
+            )
 
         # 5. Execute the approved tool
         tool = self._tool_registry.get(tool_call.tool_name)
@@ -285,9 +357,7 @@ class AgentOrchestrator:
                 status=ToolCallStatus.FAILED,
                 error_message=f"Tool '{tool_call.tool_name}' missing from registry.",
             )
-            return await self._orchestration_loop(
-                session, repo_root, user_role
-            )
+            return await self._orchestration_loop(session, repo_root, user_role)
 
         ctx = ToolExecutionContext(
             workspace_id=session.workspace_id,
@@ -298,36 +368,53 @@ class AgentOrchestrator:
             timeout_seconds=30.0,
         )
 
-        await self._tool_calls.complete(
-            tool_call.id, status=ToolCallStatus.RUNNING
-        )
+        await self._tool_calls.complete(tool_call.id, status=ToolCallStatus.RUNNING)
         await self._emit(AgentEventType.TOOL_STARTED, session_id, {"tool": tool.name})
+        self._audit_log(
+            AuditEventType.AGENT_TOOL_CALL_STARTED, session, payload={"tool": tool.name}
+        )
 
         t_start = time.monotonic()
         try:
             res = await tool.execute(ctx, tool_call.arguments)
             duration_ms = (time.monotonic() - t_start) * 1000.0
-            tool_status = (
-                ToolCallStatus.COMPLETED if res.success else ToolCallStatus.FAILED
-            )
+            tool_status = ToolCallStatus.COMPLETED if res.success else ToolCallStatus.FAILED
+
+            # Enforce max_output_bytes
+            output_to_store = res.output
+            if (
+                output_to_store
+                and len(output_to_store.encode("utf-8")) > session.limits.max_output_bytes
+            ):
+                max_bytes = session.limits.max_output_bytes
+                truncated = output_to_store.encode("utf-8")[:max_bytes].decode(
+                    "utf-8", errors="ignore"
+                )
+                output_to_store = (
+                    f"{truncated}\n[... Tool output truncated: exceeded {max_bytes} byte limit ...]"
+                )
+
             await self._tool_calls.complete(
                 tool_call.id,
                 status=tool_status,
-                output=res.output,
+                output=output_to_store,
                 error_message=res.error,
                 duration_ms=duration_ms,
                 completed_at=datetime.now(UTC),
             )
-            evt_type = (
-                AgentEventType.TOOL_COMPLETED
-                if res.success
-                else AgentEventType.TOOL_FAILED
-            )
+            evt_type = AgentEventType.TOOL_COMPLETED if res.success else AgentEventType.TOOL_FAILED
             await self._emit(evt_type, session_id, {"tool": tool.name})
+            self._audit_log(
+                AuditEventType.AGENT_TOOL_CALL_COMPLETED
+                if res.success
+                else AuditEventType.AGENT_TOOL_CALL_FAILED,
+                session,
+                payload={"tool": tool.name, "success": res.success},
+            )
 
             obs = self._context_adapter.format_observation(
                 tool_name=tool.name,
-                output=res.output if res.success else (res.error or res.output),
+                output=output_to_store if res.success else (res.error or output_to_store),
                 is_error=not res.success,
             )
         except Exception as exc:
@@ -340,6 +427,11 @@ class AgentOrchestrator:
                 completed_at=datetime.now(UTC),
             )
             await self._emit(AgentEventType.TOOL_FAILED, session_id, {"tool": tool.name})
+            self._audit_log(
+                AuditEventType.AGENT_TOOL_CALL_FAILED,
+                session,
+                payload={"tool": tool.name, "error": str(exc)},
+            )
             obs = self._context_adapter.format_observation(
                 tool_name=tool.name,
                 output=f"Execution error: {exc}",
@@ -354,6 +446,7 @@ class AgentOrchestrator:
             total_output_tokens=session.metrics.total_output_tokens,
             wall_time_seconds=session.metrics.wall_time_seconds,
             estimated_cost_usd=session.metrics.estimated_cost_usd,
+            total_llm_retries=getattr(session.metrics, "total_llm_retries", 0),
         )
         session = await self._sessions.update_metrics(session_id, updated_metrics)
 
@@ -382,12 +475,21 @@ class AgentOrchestrator:
             observations.append(initial_observation)
 
         while True:
+            # Heartbeat update in DB to signal active healthy worker
+            if hasattr(self._sessions, "update_heartbeat"):
+                try:
+                    await self._sessions.update_heartbeat(
+                        session_id, heartbeat_at=datetime.now(UTC)
+                    )
+                except Exception:
+                    pass
+
             # 1. Check Cancellation before iteration
             if await self._is_cancelled(session_id):
                 return await self._handle_cancellation(session, metrics, loop_start_time)
 
             # 2. Check Cumulative Execution Limits
-            wall_time_elapsed = (time.monotonic() - loop_start_time)
+            wall_time_elapsed = time.monotonic() - loop_start_time
             cumulative_wall_time = metrics.wall_time_seconds + wall_time_elapsed
 
             if cumulative_wall_time >= limits.max_wall_time_seconds:
@@ -430,6 +532,7 @@ class AgentOrchestrator:
 
             # 6. Call LLM Gateway
             model_to_use = session.model or "default"
+            t_llm_start = time.monotonic()
             try:
                 chat_response = await self._gateway.complete(
                     messages=prompt_messages,
@@ -444,7 +547,30 @@ class AgentOrchestrator:
                     session_id, AgentStatus.FAILED, completed_at=now
                 )
                 await self._emit(AgentEventType.FAILED, session_id, {"error": str(exc)})
+                self._audit_log(AuditEventType.AGENT_FAILED, session, reason=str(exc))
                 return session
+
+            llm_duration_ms = (time.monotonic() - t_llm_start) * 1000.0
+
+            # Record authoritative usage event if usage tracker available
+            estimated_cost = getattr(chat_response, "estimated_cost", 0.0)
+            if self._usage_tracker:
+                try:
+                    usage_rec = await self._usage_tracker.record(
+                        workspace_id=session.workspace_id,
+                        user_id=session.user_id,
+                        agent_session_id=session.id,
+                        provider=getattr(chat_response, "provider", "default"),
+                        model=chat_response.model or model_to_use,
+                        usage=chat_response.usage,
+                        duration_ms=llm_duration_ms,
+                        metadata={"session_id": str(session.id), "step": session.current_step},
+                    )
+                    estimated_cost = getattr(usage_rec, "estimated_cost", estimated_cost)
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to record usage event for session %s: %s", session_id, exc
+                    )
 
             # Update LLM metrics
             metrics = ExecutionMetrics(
@@ -453,7 +579,8 @@ class AgentOrchestrator:
                 total_input_tokens=metrics.total_input_tokens + chat_response.usage.input_tokens,
                 total_output_tokens=metrics.total_output_tokens + chat_response.usage.output_tokens,
                 wall_time_seconds=metrics.wall_time_seconds + (time.monotonic() - loop_start_time),
-                estimated_cost_usd=metrics.estimated_cost_usd,
+                estimated_cost_usd=metrics.estimated_cost_usd + estimated_cost,
+                total_llm_retries=metrics.total_llm_retries + getattr(chat_response, "retries", 0),
             )
             session = await self._sessions.update_metrics(session_id, metrics)
 
@@ -481,6 +608,9 @@ class AgentOrchestrator:
                     AgentEventType.COMPLETED,
                     session_id,
                     {"reason": decision.reason},
+                )
+                self._audit_log(
+                    AuditEventType.AGENT_COMPLETED, session, payload={"reason": decision.reason}
                 )
                 return session
 
@@ -520,9 +650,7 @@ class AgentOrchestrator:
                 continue
 
             # 10. Authorize with Deterministic PolicyEngine
-            policy_decision = self._policy_engine.authorize(
-                user_role, tool, validated_args
-            )
+            policy_decision = self._policy_engine.authorize(user_role, tool, validated_args)
 
             if not policy_decision.allowed:
                 obs = self._context_adapter.format_observation(
@@ -548,7 +676,6 @@ class AgentOrchestrator:
                 )
                 continue
 
-
             # 11. Approval Suspension Boundary
             if policy_decision.requires_approval:
                 # 1. Create tool call with PENDING_APPROVAL
@@ -559,13 +686,22 @@ class AgentOrchestrator:
                     risk_level=tool.risk_level,
                     status=ToolCallStatus.PENDING_APPROVAL,
                 )
+                self._audit_log(
+                    AuditEventType.AGENT_TOOL_CALL_CREATED,
+                    session,
+                    payload={
+                        "tool": tool.name,
+                        "tool_call_id": str(tc.id),
+                        "risk_level": tool.risk_level.value,
+                    },
+                )
                 # 2. Compute exact canonical SHA-256 arguments hash
                 args_hash = compute_arguments_hash(validated_args)
 
                 # 3. Create durable AgentApproval
                 now = datetime.now(UTC)
                 expires_at = now + timedelta(hours=_DEFAULT_APPROVAL_TTL_HOURS)
-                await self._approvals.create(
+                appr = await self._approvals.create(
                     session_id=session_id,
                     tool_call_id=tc.id,
                     tool_name=tool.name,
@@ -575,9 +711,7 @@ class AgentOrchestrator:
                 )
 
                 # 4. Transition session RUNNING -> WAITING_FOR_APPROVAL
-                validate_agent_transition(
-                    session.status, AgentStatus.WAITING_FOR_APPROVAL
-                )
+                validate_agent_transition(session.status, AgentStatus.WAITING_FOR_APPROVAL)
                 session = await self._sessions.update_status(
                     session_id, AgentStatus.WAITING_FOR_APPROVAL
                 )
@@ -589,7 +723,17 @@ class AgentOrchestrator:
                     {
                         "tool": tool.name,
                         "tool_call_id": str(tc.id),
+                        "approval_id": str(appr.id),
                         "arguments_hash": args_hash,
+                    },
+                )
+                self._audit_log(
+                    AuditEventType.AGENT_APPROVAL_REQUIRED,
+                    session,
+                    payload={
+                        "tool": tool.name,
+                        "approval_id": str(appr.id),
+                        "tool_call_id": str(tc.id),
                     },
                 )
 
@@ -605,6 +749,12 @@ class AgentOrchestrator:
             if await self._is_cancelled(session_id):
                 return await self._handle_cancellation(session, metrics, loop_start_time)
 
+            # Enforce cumulative tool call limit before executing tool
+            if metrics.total_tool_calls >= limits.max_tool_calls:
+                return await self._handle_timeout(
+                    session, metrics, cumulative_wall_time, "Max tool calls exceeded."
+                )
+
             # Persist ToolCall with RUNNING
             tc = await self._tool_calls.create(
                 session_id=session_id,
@@ -613,7 +763,15 @@ class AgentOrchestrator:
                 risk_level=tool.risk_level,
                 status=ToolCallStatus.RUNNING,
             )
+            self._audit_log(
+                AuditEventType.AGENT_TOOL_CALL_CREATED,
+                session,
+                payload={"tool": tool.name, "tool_call_id": str(tc.id)},
+            )
             await self._emit(AgentEventType.TOOL_STARTED, session_id, {"tool": tool.name})
+            self._audit_log(
+                AuditEventType.AGENT_TOOL_CALL_STARTED, session, payload={"tool": tool.name}
+            )
 
             # Authoritative execution context
             ctx = ToolExecutionContext(
@@ -629,27 +787,46 @@ class AgentOrchestrator:
             try:
                 res = await tool.execute(ctx, validated_args)
                 duration_ms = (time.monotonic() - t_start) * 1000.0
-                tool_status = (
-                    ToolCallStatus.COMPLETED if res.success else ToolCallStatus.FAILED
-                )
+                tool_status = ToolCallStatus.COMPLETED if res.success else ToolCallStatus.FAILED
+
+                # Enforce max_output_bytes
+                output_to_store = res.output
+                if (
+                    output_to_store
+                    and len(output_to_store.encode("utf-8")) > limits.max_output_bytes
+                ):
+                    max_bytes = limits.max_output_bytes
+                    truncated = output_to_store.encode("utf-8")[:max_bytes].decode(
+                        "utf-8", errors="ignore"
+                    )
+                    output_to_store = (
+                        f"{truncated}\n"
+                        f"[... Tool output truncated: exceeded {max_bytes} byte limit ...]"
+                    )
+
                 await self._tool_calls.complete(
                     tc.id,
                     status=tool_status,
-                    output=res.output,
+                    output=output_to_store,
                     error_message=res.error,
                     duration_ms=duration_ms,
                     completed_at=datetime.now(UTC),
                 )
                 evt_type = (
-                    AgentEventType.TOOL_COMPLETED
-                    if res.success
-                    else AgentEventType.TOOL_FAILED
+                    AgentEventType.TOOL_COMPLETED if res.success else AgentEventType.TOOL_FAILED
                 )
                 await self._emit(evt_type, session_id, {"tool": tool.name})
+                self._audit_log(
+                    AuditEventType.AGENT_TOOL_CALL_COMPLETED
+                    if res.success
+                    else AuditEventType.AGENT_TOOL_CALL_FAILED,
+                    session,
+                    payload={"tool": tool.name, "success": res.success},
+                )
 
                 obs = self._context_adapter.format_observation(
                     tool_name=tool.name,
-                    output=res.output if res.success else (res.error or res.output),
+                    output=output_to_store if res.success else (res.error or output_to_store),
                     is_error=not res.success,
                 )
             except Exception as exc:
@@ -662,6 +839,11 @@ class AgentOrchestrator:
                     completed_at=datetime.now(UTC),
                 )
                 await self._emit(AgentEventType.TOOL_FAILED, session_id, {"tool": tool.name})
+                self._audit_log(
+                    AuditEventType.AGENT_TOOL_CALL_FAILED,
+                    session,
+                    payload={"tool": tool.name, "error": str(exc)},
+                )
                 obs = self._context_adapter.format_observation(
                     tool_name=tool.name,
                     output=f"Execution error: {exc}",
@@ -678,6 +860,7 @@ class AgentOrchestrator:
                 total_output_tokens=metrics.total_output_tokens,
                 wall_time_seconds=metrics.wall_time_seconds + (time.monotonic() - loop_start_time),
                 estimated_cost_usd=metrics.estimated_cost_usd,
+                total_llm_retries=metrics.total_llm_retries,
             )
             session = await self._sessions.update_metrics(session_id, metrics)
 
@@ -715,7 +898,6 @@ class AgentOrchestrator:
             '```json\n{\n  "type": "complete",\n  "reason": "<summary>"\n}\n```\n'
         )
 
-
         sys_msg = base_messages[0]
         enriched_sys = ChatMessage(
             role=MessageRole.SYSTEM,
@@ -724,8 +906,10 @@ class AgentOrchestrator:
         messages: list[ChatMessage] = [enriched_sys]
 
         # Add user query message from base_messages (usually last)
-        user_msg = base_messages[-1] if len(base_messages) > 1 else ChatMessage(
-            role=MessageRole.USER, content=objective
+        user_msg = (
+            base_messages[-1]
+            if len(base_messages) > 1
+            else ChatMessage(role=MessageRole.USER, content=objective)
         )
         messages.append(user_msg)
 
@@ -744,9 +928,7 @@ class AgentOrchestrator:
         repo = await self._repositories.get(repository_id)
         return repo.local_path if repo else None
 
-    async def _resolve_user_role(
-        self, workspace_id: UUID, user_id: UUID
-    ) -> WorkspaceRole:
+    async def _resolve_user_role(self, workspace_id: UUID, user_id: UUID) -> WorkspaceRole:
         """Resolve authoritative user membership role in the workspace."""
         try:
             membership = await self._workspaces.get_membership(workspace_id, user_id)
@@ -787,6 +969,7 @@ class AgentOrchestrator:
             completed_at=now,
         )
         await self._emit(AgentEventType.CANCELLED, session.id)
+        self._audit_log(AuditEventType.AGENT_CANCELLED, session)
         logger.info("Agent session %s cancelled cleanly", session.id)
         return session
 
@@ -806,6 +989,7 @@ class AgentOrchestrator:
             total_output_tokens=metrics.total_output_tokens,
             wall_time_seconds=cumulative_wall_time,
             estimated_cost_usd=metrics.estimated_cost_usd,
+            total_llm_retries=metrics.total_llm_retries,
         )
         await self._sessions.update_metrics(session.id, final_metrics)
         validate_agent_transition(session.status, AgentStatus.TIMED_OUT)
@@ -814,7 +998,10 @@ class AgentOrchestrator:
             AgentStatus.TIMED_OUT,
             completed_at=now,
         )
+        await self._emit(AgentEventType.LIMIT_REACHED, session.id, {"reason": reason})
         await self._emit(AgentEventType.TIMED_OUT, session.id, {"reason": reason})
+        self._audit_log(AuditEventType.AGENT_LIMIT_REACHED, session, reason=reason)
+        self._audit_log(AuditEventType.AGENT_TIMED_OUT, session, reason=reason)
         logger.warning("Session %s reached limit: %s", session.id, reason)
         return session
 
@@ -840,4 +1027,3 @@ class AgentOrchestrator:
                 session_id,
                 exc,
             )
-

@@ -8,6 +8,7 @@ Redis  → ephemeral, session/current-turn freshness, TTL, max 100 entries.
 Postgres → durable conversation history, user-visible history, message
            persistence.
 """
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
@@ -86,4 +87,5 @@ class UsageEventRecord:
     duration_ms: float
     estimated_cost: float
     created_at: datetime
+    agent_session_id: UUID | None = None
     metadata: dict[str, Any] = field(default_factory=dict)

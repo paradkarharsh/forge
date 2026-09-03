@@ -1,4 +1,5 @@
 """Unit and integration tests for ConversationService, conversation API, and streaming SSE."""
+
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -106,9 +107,7 @@ class FakeConversationRepository:
         self.conversations[cid] = record
         return record
 
-    async def update_title(
-        self, conversation_id: UUID, title: str
-    ) -> ConversationRecord | None:
+    async def update_title(self, conversation_id: UUID, title: str) -> ConversationRecord | None:
         conv = self.conversations.get(conversation_id)
         if not conv:
             return None
@@ -282,6 +281,7 @@ class FakeUsageEventRepository:
         total_tokens: int,
         duration_ms: float,
         estimated_cost: float = 0.0,
+        agent_session_id: UUID | None = None,
         metadata: dict | None = None,
     ) -> UsageEventRecord:
         record = UsageEventRecord(
@@ -290,6 +290,7 @@ class FakeUsageEventRepository:
             user_id=user_id,
             conversation_id=conversation_id,
             message_id=message_id,
+            agent_session_id=agent_session_id,
             provider=provider,
             model=model,
             input_tokens=input_tokens,
@@ -300,6 +301,7 @@ class FakeUsageEventRepository:
             created_at=datetime.now(UTC),
             metadata=metadata or {},
         )
+
         self.events.append(record)
         return record
 
@@ -459,11 +461,14 @@ async def test_conversation_service_crud_and_authorization(fake_repos):
         )
 
     # Owner delete succeeds
-    assert await svc.delete_conversation(
-        conversation_id=conv.id,
-        workspace_id=ws_id,
-        user_id=user_id,
-    ) is True
+    assert (
+        await svc.delete_conversation(
+            conversation_id=conv.id,
+            workspace_id=ws_id,
+            user_id=user_id,
+        )
+        is True
+    )
 
 
 @pytest.mark.asyncio

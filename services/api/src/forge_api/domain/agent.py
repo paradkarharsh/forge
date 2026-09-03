@@ -3,6 +3,7 @@
 Contains domain records, statuses, execution limits, and strict state transition rules.
 Provider SDKs, SQLAlchemy models, and presentation types must NEVER appear here.
 """
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
@@ -53,39 +54,47 @@ class ToolCallStatus(StrEnum):
 
 # ─── State Machine Rules ──────────────────────────────────────────────
 
-TERMINAL_AGENT_STATUSES: frozenset[AgentStatus] = frozenset({
-    AgentStatus.COMPLETED,
-    AgentStatus.FAILED,
-    AgentStatus.CANCELLED,
-    AgentStatus.TIMED_OUT,
-    AgentStatus.EXPIRED,
-})
-
-VALID_AGENT_STATUS_TRANSITIONS: dict[AgentStatus, frozenset[AgentStatus]] = {
-    AgentStatus.CREATED: frozenset({
-        AgentStatus.PLANNING,
-        AgentStatus.CANCELLED,
-    }),
-
-
-    AgentStatus.PLANNING: frozenset({
-        AgentStatus.RUNNING,
-        AgentStatus.FAILED,
-        AgentStatus.CANCELLED,
-    }),
-    AgentStatus.RUNNING: frozenset({
-        AgentStatus.WAITING_FOR_APPROVAL,
+TERMINAL_AGENT_STATUSES: frozenset[AgentStatus] = frozenset(
+    {
         AgentStatus.COMPLETED,
         AgentStatus.FAILED,
         AgentStatus.CANCELLED,
         AgentStatus.TIMED_OUT,
-    }),
-    AgentStatus.WAITING_FOR_APPROVAL: frozenset({
-        AgentStatus.RUNNING,
-        AgentStatus.CANCELLED,
-        AgentStatus.TIMED_OUT,
         AgentStatus.EXPIRED,
-    }),
+    }
+)
+
+VALID_AGENT_STATUS_TRANSITIONS: dict[AgentStatus, frozenset[AgentStatus]] = {
+    AgentStatus.CREATED: frozenset(
+        {
+            AgentStatus.PLANNING,
+            AgentStatus.CANCELLED,
+        }
+    ),
+    AgentStatus.PLANNING: frozenset(
+        {
+            AgentStatus.RUNNING,
+            AgentStatus.FAILED,
+            AgentStatus.CANCELLED,
+        }
+    ),
+    AgentStatus.RUNNING: frozenset(
+        {
+            AgentStatus.WAITING_FOR_APPROVAL,
+            AgentStatus.COMPLETED,
+            AgentStatus.FAILED,
+            AgentStatus.CANCELLED,
+            AgentStatus.TIMED_OUT,
+        }
+    ),
+    AgentStatus.WAITING_FOR_APPROVAL: frozenset(
+        {
+            AgentStatus.RUNNING,
+            AgentStatus.CANCELLED,
+            AgentStatus.TIMED_OUT,
+            AgentStatus.EXPIRED,
+        }
+    ),
     AgentStatus.COMPLETED: frozenset(),
     AgentStatus.FAILED: frozenset(),
     AgentStatus.CANCELLED: frozenset(),
@@ -138,6 +147,7 @@ class ExecutionMetrics:
     total_output_tokens: int = 0
     wall_time_seconds: float = 0.0
     estimated_cost_usd: float = 0.0
+    total_llm_retries: int = 0
 
 
 # ─── Domain Records ───────────────────────────────────────────────────
@@ -162,6 +172,8 @@ class AgentSessionRecord:
     started_at: datetime | None = None
     completed_at: datetime | None = None
     cancelled_at: datetime | None = None
+    last_heartbeat_at: datetime | None = None
+    worker_id: str | None = None
     deleted_at: datetime | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -222,6 +234,13 @@ class AgentEventType(StrEnum):
     FAILED = "agent.failed"
     CANCELLED = "agent.cancelled"
     TIMED_OUT = "agent.timed_out"
+    RUN_REQUESTED = "agent.run_requested"
+    PLANNING_STARTED = "agent.planning_started"
+    RUNNING = "agent.running"
+    RESUMED = "agent.resumed"
+    CANCEL_REQUESTED = "agent.cancel_requested"
+    APPROVAL_EXPIRED = "agent.approval_expired"
+    LIMIT_REACHED = "agent.limit_reached"
 
 
 @dataclass(frozen=True, slots=True)
@@ -258,4 +277,3 @@ class ModelDecision:
     tool_name: str | None = None
     arguments: dict[str, Any] = field(default_factory=dict)
     reason: str | None = None
-

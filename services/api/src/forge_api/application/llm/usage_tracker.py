@@ -3,6 +3,7 @@
 Records per-request LLM usage (tokens, cost, duration) using the model
 registry for cost metadata.  Local/Ollama cost is zero.
 """
+
 import logging
 from uuid import UUID
 
@@ -37,17 +38,21 @@ class UsageTracker:
         duration_ms: float,
         conversation_id: UUID | None = None,
         message_id: UUID | None = None,
+        agent_session_id: UUID | None = None,
         metadata: dict | None = None,
     ) -> UsageEventRecord:
         """Record a usage event with cost estimation."""
         estimated_cost = self._registry.estimate_cost(
-            model, usage.input_tokens, usage.output_tokens,
+            model,
+            usage.input_tokens,
+            usage.output_tokens,
         )
         return await self._usage.create(
             workspace_id=workspace_id,
             user_id=user_id,
             conversation_id=conversation_id,
             message_id=message_id,
+            agent_session_id=agent_session_id,
             provider=provider,
             model=model,
             input_tokens=usage.input_tokens,

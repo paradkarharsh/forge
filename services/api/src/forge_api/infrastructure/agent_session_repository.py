@@ -1,9 +1,10 @@
 """SQLAlchemy adapter for the AgentSessionRepository protocol."""
+
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from forge_api.domain.agent import (
@@ -16,15 +17,9 @@ from forge_api.infrastructure.database.models import AgentSessionModel
 
 
 def _to_record(model: AgentSessionModel) -> AgentSessionRecord:
-    limits = (
-        AgentLimits(**model.limits)
-        if isinstance(model.limits, dict)
-        else AgentLimits()
-    )
+    limits = AgentLimits(**model.limits) if isinstance(model.limits, dict) else AgentLimits()
     metrics = (
-        ExecutionMetrics(**model.metrics)
-        if isinstance(model.metrics, dict)
-        else ExecutionMetrics()
+        ExecutionMetrics(**model.metrics) if isinstance(model.metrics, dict) else ExecutionMetrics()
     )
     return AgentSessionRecord(
         id=model.id,
@@ -43,6 +38,8 @@ def _to_record(model: AgentSessionModel) -> AgentSessionRecord:
         started_at=model.started_at,
         completed_at=model.completed_at,
         cancelled_at=model.cancelled_at,
+        last_heartbeat_at=model.last_heartbeat_at,
+        worker_id=model.worker_id,
         deleted_at=model.deleted_at,
     )
 
@@ -94,9 +91,13 @@ class SqlAgentSessionRepository:
         repository_id: UUID | None = None,
         status: AgentStatus | None = None,
     ) -> int:
-        stmt = select(func.count()).select_from(AgentSessionModel).where(
-            AgentSessionModel.workspace_id == workspace_id,
-            AgentSessionModel.deleted_at.is_(None),
+        stmt = (
+            select(func.count())
+            .select_from(AgentSessionModel)
+            .where(
+                AgentSessionModel.workspace_id == workspace_id,
+                AgentSessionModel.deleted_at.is_(None),
+            )
         )
         if user_id is not None:
             stmt = stmt.where(AgentSessionModel.user_id == user_id)
@@ -174,12 +175,16 @@ class SqlAgentSessionRepository:
 
         if completed_at is not None:
             model.completed_at = completed_at
-        elif status in (
-            AgentStatus.COMPLETED,
-            AgentStatus.FAILED,
-            AgentStatus.TIMED_OUT,
-            AgentStatus.EXPIRED,
-        ) and model.completed_at is None:
+        elif (
+            status
+            in (
+                AgentStatus.COMPLETED,
+                AgentStatus.FAILED,
+                AgentStatus.TIMED_OUT,
+                AgentStatus.EXPIRED,
+            )
+            and model.completed_at is None
+        ):
             model.completed_at = datetime.now(UTC)
 
         if cancelled_at is not None:
@@ -224,3 +229,74 @@ class SqlAgentSessionRepository:
         model.deleted_at = datetime.now(UTC)
         await self._db.flush()
         return True
+
+    async def update_heartbeat(
+        self,
+        session_id: UUID,
+        *,
+        worker_id: str | None = None,
+        heartbeat_at: datetime | None = None,
+    ) -> bool:
+        model = await self._db.get(AgentSessionModel, session_id)
+        if not model or model.deleted_at is not None:
+            return False
+
+        model.last_heartbeat_at = heartbeat_at or datetime.now(UTC)
+        if worker_id is not None:
+            model.worker_id = worker_id
+        await self._db.flush()
+        return True
+
+    async def list_stale_sessions(self, *, stale_before: datetime) -> list[AgentSessionRecord]:
+        stmt = (
+            select(AgentSessionModel)
+            .where(
+                AgentSessionModel.status.in_(
+                    [
+                        AgentStatus.RUNNING.value,
+                        AgentStatus.PLANNING.value,
+                    ]
+                ),
+                AgentSessionModel.deleted_at.is_(None),
+                (
+                    (
+                        AgentSessionModel.last_heartbeat_at.is_not(None)
+                        & (AgentSessionModel.last_heartbeat_at < stale_before)
+                    )
+                    | (
+                        AgentSessionModel.last_heartbeat_at.is_(None)
+                        & (AgentSessionModel.started_at < stale_before)
+                    )
+                    | (
+                        AgentSessionModel.last_heartbeat_at.is_(None)
+                        & AgentSessionModel.started_at.is_(None)
+                        & (AgentSessionModel.created_at < stale_before)
+                    )
+                ),
+            )
+            .order_by(AgentSessionModel.created_at.asc())
+        )
+        rows = (await self._db.scalars(stmt)).all()
+        return [_to_record(r) for r in rows]
+
+    async def delete_terminal_sessions(self, *, completed_before: datetime) -> int:
+        terminal_statuses = [
+            AgentStatus.COMPLETED.value,
+            AgentStatus.FAILED.value,
+            AgentStatus.CANCELLED.value,
+            AgentStatus.TIMED_OUT.value,
+            AgentStatus.EXPIRED.value,
+        ]
+        stmt = select(AgentSessionModel.id).where(
+            AgentSessionModel.status.in_(terminal_statuses),
+            AgentSessionModel.completed_at.is_not(None),
+            AgentSessionModel.completed_at < completed_before,
+        )
+        session_ids = (await self._db.scalars(stmt)).all()
+        if not session_ids:
+            return 0
+
+        del_stmt = delete(AgentSessionModel).where(AgentSessionModel.id.in_(session_ids))
+        res = await self._db.execute(del_stmt)
+        await self._db.flush()
+        return res.rowcount or len(session_ids)

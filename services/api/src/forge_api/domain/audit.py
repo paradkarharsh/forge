@@ -4,6 +4,7 @@ Audit events carry the full context needed for a security forensics trail:
 who, through which session, from where, with which user agent, why, and an
 arbitrary structured payload.
 """
+
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
@@ -57,6 +58,27 @@ class AuditEventType(StrEnum):
     LLM_STREAM_ERROR = "llm.stream_error"
     LLM_ERROR = "llm.error"
     LLM_CANCELLED = "llm.cancelled"
+    AGENT_CREATED = "agent.created"
+    AGENT_RUN_REQUESTED = "agent.run_requested"
+    AGENT_PLANNING_STARTED = "agent.planning_started"
+    AGENT_RUNNING = "agent.running"
+    AGENT_STEP_STARTED = "agent.step_started"
+    AGENT_STEP_COMPLETED = "agent.step_completed"
+    AGENT_TOOL_CALL_CREATED = "agent.tool_call_created"
+    AGENT_TOOL_CALL_STARTED = "agent.tool_call_started"
+    AGENT_TOOL_CALL_COMPLETED = "agent.tool_call_completed"
+    AGENT_TOOL_CALL_FAILED = "agent.tool_call_failed"
+    AGENT_APPROVAL_REQUIRED = "agent.approval_required"
+    AGENT_APPROVAL_GRANTED = "agent.approval_granted"
+    AGENT_APPROVAL_DENIED = "agent.approval_denied"
+    AGENT_APPROVAL_EXPIRED = "agent.approval_expired"
+    AGENT_RESUMED = "agent.resumed"
+    AGENT_CANCEL_REQUESTED = "agent.cancel_requested"
+    AGENT_CANCELLED = "agent.cancelled"
+    AGENT_COMPLETED = "agent.completed"
+    AGENT_FAILED = "agent.failed"
+    AGENT_TIMED_OUT = "agent.timed_out"
+    AGENT_LIMIT_REACHED = "agent.limit_reached"
 
 
 @dataclass(frozen=True, slots=True)

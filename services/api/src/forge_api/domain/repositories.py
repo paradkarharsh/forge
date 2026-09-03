@@ -3,6 +3,7 @@
 Domain services depend on these interfaces; infrastructure adapters
 implement them with concrete persistence engines (currently SQLAlchemy).
 """
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Protocol
@@ -256,9 +257,7 @@ class RepositoryEventRepository(Protocol):
 class RepositoryFileRepository(Protocol):
     async def get(self, file_id: UUID) -> FileRecord | None: ...
 
-    async def get_by_path(
-        self, repository_id: UUID, path: str
-    ) -> FileRecord | None: ...
+    async def get_by_path(self, repository_id: UUID, path: str) -> FileRecord | None: ...
 
     async def list_by_repository(
         self, repository_id: UUID, *, language: str | None = None
@@ -430,7 +429,9 @@ class MemoryRepository(Protocol):
     ) -> list[MemoryRecord]: ...
 
     async def mark_stale(
-        self, repository_id: UUID, paths: list[str],
+        self,
+        repository_id: UUID,
+        paths: list[str],
     ) -> int: ...
 
     async def delete_by_repository(self, repository_id: UUID) -> int: ...
@@ -438,21 +439,29 @@ class MemoryRepository(Protocol):
     async def touch_accessed(self, memory_ids: list[UUID]) -> None: ...
 
     async def find_expired(
-        self, now: datetime, *, limit: int = 100,
+        self,
+        now: datetime,
+        *,
+        limit: int = 100,
     ) -> list[MemoryRecord]: ...
 
     async def find_missing_embeddings(
-        self, *, limit: int = 100,
+        self,
+        *,
+        limit: int = 100,
     ) -> list[MemoryRecord]: ...
 
     async def hard_delete_old(self, older_than: datetime) -> int: ...
 
     async def bulk_update_status(
-        self, memory_ids: list[UUID], status: str,
+        self,
+        memory_ids: list[UUID],
+        status: str,
     ) -> int: ...
 
     async def bulk_update_embeddings(
-        self, updates: list[tuple[UUID, list[float]]],
+        self,
+        updates: list[tuple[UUID, list[float]]],
     ) -> int: ...
 
 
@@ -460,7 +469,9 @@ class ConversationContextStore(Protocol):
     """Ephemeral conversation context port (Redis-backed)."""
 
     async def get(
-        self, session_id: UUID, conversation_id: UUID,
+        self,
+        session_id: UUID,
+        conversation_id: UUID,
     ) -> list[ConversationContextEntry]: ...
 
     async def append(
@@ -471,11 +482,16 @@ class ConversationContextStore(Protocol):
     ) -> None: ...
 
     async def clear(
-        self, session_id: UUID, conversation_id: UUID,
+        self,
+        session_id: UUID,
+        conversation_id: UUID,
     ) -> None: ...
 
     async def set_ttl(
-        self, session_id: UUID, conversation_id: UUID, ttl_seconds: int,
+        self,
+        session_id: UUID,
+        conversation_id: UUID,
+        ttl_seconds: int,
     ) -> None: ...
 
 
@@ -515,11 +531,14 @@ class ConversationRepository(Protocol):
     ) -> ConversationRecord: ...
 
     async def update_title(
-        self, conversation_id: UUID, title: str,
+        self,
+        conversation_id: UUID,
+        title: str,
     ) -> ConversationRecord | None: ...
 
     async def increment_message_count(
-        self, conversation_id: UUID,
+        self,
+        conversation_id: UUID,
     ) -> bool: ...
 
     async def soft_delete(self, conversation_id: UUID) -> bool: ...
@@ -539,7 +558,8 @@ class MessageRepository(Protocol):
     ) -> list[MessageRecord]: ...
 
     async def count_by_conversation(
-        self, conversation_id: UUID,
+        self,
+        conversation_id: UUID,
     ) -> int: ...
 
     async def create(
@@ -592,8 +612,11 @@ class UsageEventRepository(Protocol):
         total_tokens: int,
         duration_ms: float,
         estimated_cost: float,
+        agent_session_id: UUID | None = None,
         metadata: dict | None = None,
     ) -> UsageEventRecord: ...
+
+    async def list_by_agent_session(self, session_id: UUID) -> list[UsageEventRecord]: ...
 
     async def list_by_workspace(
         self,
@@ -679,15 +702,25 @@ class AgentSessionRepository(Protocol):
 
     async def soft_delete(self, session_id: UUID) -> bool: ...
 
+    async def update_heartbeat(
+        self,
+        session_id: UUID,
+        *,
+        worker_id: str | None = None,
+        heartbeat_at: datetime | None = None,
+    ) -> bool: ...
+
+    async def list_stale_sessions(self, *, stale_before: datetime) -> list[AgentSessionRecord]: ...
+
+    async def delete_terminal_sessions(self, *, completed_before: datetime) -> int: ...
+
 
 class AgentStepRepository(Protocol):
     """Port for agent plan step persistence."""
 
     async def get(self, step_id: UUID) -> AgentStepRecord | None: ...
 
-    async def list_by_session(
-        self, session_id: UUID
-    ) -> list[AgentStepRecord]: ...
+    async def list_by_session(self, session_id: UUID) -> list[AgentStepRecord]: ...
 
     async def create(
         self,
@@ -752,18 +785,11 @@ class AgentApprovalRepository(Protocol):
 
     async def get(self, approval_id: UUID) -> AgentApprovalRecord | None: ...
 
-    async def get_by_tool_call(
-        self, tool_call_id: UUID
-    ) -> AgentApprovalRecord | None: ...
+    async def get_by_tool_call(self, tool_call_id: UUID) -> AgentApprovalRecord | None: ...
 
-    async def list_pending_by_session(
-        self, session_id: UUID
-    ) -> list[AgentApprovalRecord]: ...
+    async def list_pending_by_session(self, session_id: UUID) -> list[AgentApprovalRecord]: ...
 
-    async def list_by_session(
-        self, session_id: UUID
-    ) -> list[AgentApprovalRecord]: ...
-
+    async def list_by_session(self, session_id: UUID) -> list[AgentApprovalRecord]: ...
 
     async def create(
         self,
@@ -817,9 +843,7 @@ class AgentJobQueue(Protocol):
         metadata: dict[str, Any] | None = None,
     ) -> AgentJobRecord: ...
 
-    async def claim_next(
-        self, job_types: list[str] | None = None
-    ) -> AgentJobRecord | None: ...
+    async def claim_next(self, job_types: list[str] | None = None) -> AgentJobRecord | None: ...
 
     async def start(self, job_id: UUID) -> AgentJobRecord | None: ...
 
@@ -828,5 +852,3 @@ class AgentJobQueue(Protocol):
     async def fail(
         self, job_id: UUID, *, error_message: str | None = None
     ) -> AgentJobRecord | None: ...
-
-

@@ -6,6 +6,7 @@ Provides:
 - Human approval grant/deny lifecycle
 - Real-time Server-Sent Events (SSE) streaming with bounded replay and live handoff
 """
+
 import asyncio
 import json
 import logging
@@ -87,19 +88,32 @@ def _session_view(session: AgentSessionRecord) -> dict[str, Any]:
         },
         "metrics": {
             "total_llm_calls": session.metrics.total_llm_calls,
+            "total_llm_retries": getattr(session.metrics, "total_llm_retries", 0),
             "total_tool_calls": session.metrics.total_tool_calls,
             "total_input_tokens": session.metrics.total_input_tokens,
             "total_output_tokens": session.metrics.total_output_tokens,
             "wall_time_seconds": session.metrics.wall_time_seconds,
             "estimated_cost_usd": session.metrics.estimated_cost_usd,
         },
-
+        "usage_summary": {
+            "total_llm_calls": session.metrics.total_llm_calls,
+            "total_llm_retries": getattr(session.metrics, "total_llm_retries", 0),
+            "total_tool_calls": session.metrics.total_tool_calls,
+            "total_input_tokens": session.metrics.total_input_tokens,
+            "total_output_tokens": session.metrics.total_output_tokens,
+            "wall_time_seconds": session.metrics.wall_time_seconds,
+            "estimated_cost_usd": session.metrics.estimated_cost_usd,
+        },
+        "failure_reason": session.metadata.get("failure_reason") if session.metadata else None,
         "current_step": session.current_step,
         "metadata": session.metadata,
         "created_at": session.created_at.isoformat(),
         "started_at": session.started_at.isoformat() if session.started_at else None,
         "completed_at": session.completed_at.isoformat() if session.completed_at else None,
         "cancelled_at": session.cancelled_at.isoformat() if session.cancelled_at else None,
+        "last_heartbeat_at": session.last_heartbeat_at.isoformat()
+        if session.last_heartbeat_at
+        else None,
     }
 
 
@@ -425,9 +439,7 @@ async def stream_agent_events(
                 if message and message.get("type") == "message":
                     raw_data = message.get("data")
                     text = (
-                        raw_data.decode("utf-8")
-                        if isinstance(raw_data, bytes)
-                        else str(raw_data)
+                        raw_data.decode("utf-8") if isinstance(raw_data, bytes) else str(raw_data)
                     )
                     try:
                         data = json.loads(text)
@@ -460,8 +472,6 @@ async def stream_agent_events(
                 await pubsub.aclose()
             except Exception:
                 pass
-
-
 
     return StreamingResponse(
         event_generator(),

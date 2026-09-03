@@ -1,4 +1,5 @@
 """SQLAlchemy adapter for usage event persistence."""
+
 from datetime import datetime
 from uuid import UUID
 
@@ -24,6 +25,7 @@ def _to_record(row: UsageEventModel) -> UsageEventRecord:
         duration_ms=row.duration_ms,
         estimated_cost=row.estimated_cost,
         created_at=row.created_at,
+        agent_session_id=row.agent_session_id,
         metadata=row.metadata_ or {},
     )
 
@@ -46,6 +48,7 @@ class SqlUsageEventRepository:
         total_tokens: int,
         duration_ms: float,
         estimated_cost: float,
+        agent_session_id: UUID | None = None,
         metadata: dict | None = None,
     ) -> UsageEventRecord:
         row = UsageEventModel(
@@ -53,6 +56,7 @@ class SqlUsageEventRepository:
             user_id=user_id,
             conversation_id=conversation_id,
             message_id=message_id,
+            agent_session_id=agent_session_id,
             provider=provider,
             model=model,
             input_tokens=input_tokens,
@@ -103,18 +107,10 @@ class SqlUsageEventRepository:
     ) -> dict:
         q = select(
             func.count().label("total_requests"),
-            func.coalesce(func.sum(UsageEventModel.input_tokens), 0).label(
-                "total_input_tokens"
-            ),
-            func.coalesce(func.sum(UsageEventModel.output_tokens), 0).label(
-                "total_output_tokens"
-            ),
-            func.coalesce(func.sum(UsageEventModel.total_tokens), 0).label(
-                "total_tokens"
-            ),
-            func.coalesce(func.sum(UsageEventModel.estimated_cost), 0.0).label(
-                "total_cost"
-            ),
+            func.coalesce(func.sum(UsageEventModel.input_tokens), 0).label("total_input_tokens"),
+            func.coalesce(func.sum(UsageEventModel.output_tokens), 0).label("total_output_tokens"),
+            func.coalesce(func.sum(UsageEventModel.total_tokens), 0).label("total_tokens"),
+            func.coalesce(func.sum(UsageEventModel.estimated_cost), 0.0).label("total_cost"),
         ).where(UsageEventModel.workspace_id == workspace_id)
 
         if user_id is not None:
@@ -133,3 +129,12 @@ class SqlUsageEventRepository:
             "total_tokens": row.total_tokens,
             "total_cost": float(row.total_cost),
         }
+
+    async def list_by_agent_session(self, session_id: UUID) -> list[UsageEventRecord]:
+        stmt = (
+            select(UsageEventModel)
+            .where(UsageEventModel.agent_session_id == session_id)
+            .order_by(UsageEventModel.created_at.asc())
+        )
+        rows = (await self._db.scalars(stmt)).all()
+        return [_to_record(r) for r in rows]

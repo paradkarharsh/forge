@@ -3,6 +3,7 @@
 Verifies that AuditLogger produces correct AuditEventModel records and
 that the domain AuditEvent dataclass carries the full context.
 """
+
 from uuid import uuid4
 
 from forge_api.domain.audit import AuditEvent, AuditEventType
@@ -99,7 +100,29 @@ class TestAuditEventTypes:
             "llm.stream_error",
             "llm.error",
             "llm.cancelled",
+            "agent.created",
+            "agent.run_requested",
+            "agent.planning_started",
+            "agent.running",
+            "agent.step_started",
+            "agent.step_completed",
+            "agent.tool_call_created",
+            "agent.tool_call_started",
+            "agent.tool_call_completed",
+            "agent.tool_call_failed",
+            "agent.approval_required",
+            "agent.approval_granted",
+            "agent.approval_denied",
+            "agent.approval_expired",
+            "agent.resumed",
+            "agent.cancel_requested",
+            "agent.cancelled",
+            "agent.completed",
+            "agent.failed",
+            "agent.timed_out",
+            "agent.limit_reached",
         }
+
         actual = {member.value for member in AuditEventType}
         assert expected == actual
 

@@ -1,4 +1,5 @@
 """Comprehensive test suite for FP8-D Agent HTTP API, Application Service, and SSE Streaming."""
+
 import asyncio
 import json
 from datetime import UTC, datetime, timedelta
@@ -58,14 +59,14 @@ class MockRedis:
             if end == -1:
                 self.data[key] = lst[start:]
             else:
-                self.data[key] = lst[start:end + 1]
+                self.data[key] = lst[start : end + 1]
         return True
 
     async def lrange(self, key: str, start: int, end: int):
         lst = self.data.get(key, [])
         if end == -1:
             return lst[start:]
-        return lst[start:end + 1]
+        return lst[start : end + 1]
 
     async def expire(self, key: str, ttl: int):
         return True
@@ -132,7 +133,8 @@ class FakeAgentSessionRepository:
         offset: int = 0,
     ) -> list[AgentSessionRecord]:
         res = [
-            s for s in self.sessions.values()
+            s
+            for s in self.sessions.values()
             if s.workspace_id == workspace_id
             and (user_id is None or s.user_id == user_id)
             and (repository_id is None or s.repository_id == repository_id)
@@ -151,7 +153,8 @@ class FakeAgentSessionRepository:
     ) -> int:
         return len(
             [
-                s for s in self.sessions.values()
+                s
+                for s in self.sessions.values()
                 if s.workspace_id == workspace_id
                 and (user_id is None or s.user_id == user_id)
                 and (repository_id is None or s.repository_id == repository_id)
@@ -256,6 +259,64 @@ class FakeAgentSessionRepository:
 
     async def soft_delete(self, session_id: UUID) -> bool:
         return self.sessions.pop(session_id, None) is not None
+
+    async def update_heartbeat(
+        self,
+        session_id: UUID,
+        *,
+        worker_id: str | None = None,
+        heartbeat_at: datetime | None = None,
+    ) -> bool:
+        rec = self.sessions.get(session_id)
+        if not rec:
+            return False
+        updated = AgentSessionRecord(
+            id=rec.id,
+            workspace_id=rec.workspace_id,
+            user_id=rec.user_id,
+            objective=rec.objective,
+            status=rec.status,
+            created_at=rec.created_at,
+            repository_id=rec.repository_id,
+            conversation_id=rec.conversation_id,
+            model=rec.model,
+            limits=rec.limits,
+            metrics=rec.metrics,
+            current_step=rec.current_step,
+            started_at=rec.started_at,
+            completed_at=rec.completed_at,
+            cancelled_at=rec.cancelled_at,
+            last_heartbeat_at=heartbeat_at or datetime.now(UTC),
+            worker_id=worker_id or rec.worker_id,
+            metadata=rec.metadata,
+        )
+        self.sessions[session_id] = updated
+        return True
+
+    async def list_stale_sessions(self, *, stale_before: datetime) -> list[AgentSessionRecord]:
+        res = []
+        for s in self.sessions.values():
+            if s.status in (AgentStatus.RUNNING, AgentStatus.PLANNING):
+                last_hb = s.last_heartbeat_at or s.started_at or s.created_at
+                if last_hb < stale_before:
+                    res.append(s)
+        return res
+
+    async def delete_terminal_sessions(self, *, completed_before: datetime) -> int:
+        to_del = []
+        for sid, s in self.sessions.items():
+            if s.status in (
+                AgentStatus.COMPLETED,
+                AgentStatus.FAILED,
+                AgentStatus.CANCELLED,
+                AgentStatus.TIMED_OUT,
+                AgentStatus.EXPIRED,
+            ):
+                if s.completed_at and s.completed_at < completed_before:
+                    to_del.append(sid)
+        for sid in to_del:
+            del self.sessions[sid]
+        return len(to_del)
 
 
 class FakeAgentStepRepository:
@@ -407,7 +468,8 @@ class FakeAgentApprovalRepository:
 
     async def list_pending_by_session(self, session_id: UUID) -> list[AgentApprovalRecord]:
         return [
-            a for a in self.approvals.values()
+            a
+            for a in self.approvals.values()
             if a.session_id == session_id and a.status == ApprovalStatus.PENDING
         ]
 
@@ -585,7 +647,6 @@ class TestAgentSessionEndpoints:
         )
         _auth_override(app, user_id)
 
-
         resp = agent_client.post(
             f"/v1/workspaces/{w.id}/agents",
             json={"objective": "Build automated indexing pipeline"},
@@ -642,7 +703,6 @@ class TestAgentExecutionLifecycle:
         )
         _auth_override(app, user_id)
 
-
         session = await agent_env["sessions"].create(
             workspace_id=w.id, user_id=user_id, objective="Launchable session"
         )
@@ -668,7 +728,6 @@ class TestAgentExecutionLifecycle:
         )
         _auth_override(app, user_id)
 
-
         session = await agent_env["sessions"].create(
             workspace_id=w.id,
             user_id=user_id,
@@ -680,7 +739,6 @@ class TestAgentExecutionLifecycle:
         assert resp.status_code == 422
         assert resp.json()["error"]["code"] == "agent_already_running"
 
-
     @pytest.mark.asyncio
     async def test_cancel_session_idempotent(self, agent_client, agent_env):
         app = agent_client.app
@@ -688,7 +746,6 @@ class TestAgentExecutionLifecycle:
             agent_env["workspaces"], role=WorkspaceRole.DEVELOPER
         )
         _auth_override(app, user_id)
-
 
         session = await agent_env["sessions"].create(
             workspace_id=w.id,
@@ -706,7 +763,6 @@ class TestAgentExecutionLifecycle:
         assert len(events) == 1
         assert events[0].event_type.value == "agent.cancelled"
 
-
         # Second cancel is idempotent
         resp2 = agent_client.post(f"/v1/workspaces/{w.id}/agents/{session.id}/cancel")
         assert resp2.status_code == 200
@@ -721,7 +777,6 @@ class TestAgentApprovalsAPI:
             agent_env["workspaces"], role=WorkspaceRole.OWNER
         )
         _auth_override(app, owner_id)
-
 
         session = await agent_env["sessions"].create(
             workspace_id=w.id,
@@ -861,15 +916,17 @@ class TestAgentSSEEvents:
 
         # Push events into Redis replay buffer with embedded secrets
         replay_key = f"{EVENT_LOG_PREFIX}{session.id}"
-        raw_event = json.dumps({
-            "id": "evt-101",
-            "event_type": "tool_executed",
-            "session_id": str(session.id),
-            "payload": {
-                "secret": "ghp_1234567890abcdefghijklmnopqrstuvwxyz",
-                "normal": "hello",
-            },
-        })
+        raw_event = json.dumps(
+            {
+                "id": "evt-101",
+                "event_type": "tool_executed",
+                "session_id": str(session.id),
+                "payload": {
+                    "secret": "ghp_1234567890abcdefghijklmnopqrstuvwxyz",
+                    "normal": "hello",
+                },
+            }
+        )
         await agent_env["redis"].rpush(replay_key, raw_event)
 
         url = f"/v1/workspaces/{w.id}/agents/{session.id}/events"
@@ -889,7 +946,6 @@ class TestAgentSSEEvents:
             assert "id: evt-101" in content
             assert "event: tool_executed" in content
             assert "[REDACTED_GITHUB_TOKEN]" in content
-
 
     @pytest.mark.asyncio
     async def test_sse_redis_unavailable_fallback(self, agent_client, agent_env):
@@ -975,12 +1031,8 @@ class TestAgentIntrospectionEndpoints:
         session = await agent_env["sessions"].create(
             workspace_id=w.id, user_id=user_id, objective="Steps test"
         )
-        await agent_env["steps"].create(
-            session_id=session.id, sequence=2, objective="Step two"
-        )
-        await agent_env["steps"].create(
-            session_id=session.id, sequence=1, objective="Step one"
-        )
+        await agent_env["steps"].create(session_id=session.id, sequence=2, objective="Step two")
+        await agent_env["steps"].create(session_id=session.id, sequence=1, objective="Step one")
 
         resp = agent_client.get(f"/v1/workspaces/{w.id}/agents/{session.id}/steps")
         assert resp.status_code == 200
@@ -1225,9 +1277,7 @@ class TestAgentSecurityEdgeCases:
         w1, owner_id = await _create_workspace_and_user(
             agent_env["workspaces"], role=WorkspaceRole.OWNER
         )
-        w2, _ = await _create_workspace_and_user(
-            agent_env["workspaces"], role=WorkspaceRole.OWNER
-        )
+        w2, _ = await _create_workspace_and_user(agent_env["workspaces"], role=WorkspaceRole.OWNER)
         _auth_override(app, owner_id)
 
         # Create repo in workspace 2
@@ -1238,7 +1288,6 @@ class TestAgentSecurityEdgeCases:
             provider="github",
             clone_status="ready",
         )
-
 
         # Attempt to create agent session in workspace 1 tied to repo_w2 -> 404
         resp = agent_client.post(
@@ -1252,9 +1301,7 @@ class TestAgentSecurityEdgeCases:
         assert resp.json()["error"]["code"] == "repository_not_found"
 
     @pytest.mark.asyncio
-    async def test_cancellation_with_redis_unavailable(
-        self, agent_client, agent_env
-    ):
+    async def test_cancellation_with_redis_unavailable(self, agent_client, agent_env):
         app = agent_client.app
         w, user_id = await _create_workspace_and_user(
             agent_env["workspaces"], role=WorkspaceRole.DEVELOPER
@@ -1337,7 +1384,3 @@ class TestAgentSecurityEdgeCases:
             j.job_type == "agent_resume" and j.session_id == session.id
             for j in agent_env["job_queue"].enqueued
         )
-
-
-
-

@@ -5,6 +5,7 @@ Database session factory and cache client are created once at application
 startup (lifespan) and shared via ``app.state``; every request builds fresh
 repositories and services bound to the shared session factory.
 """
+
 from collections.abc import AsyncGenerator
 
 from fastapi import Depends, Request
@@ -13,6 +14,7 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from forge_api.application.agent.agent_service import AgentService
+from forge_api.application.agent.maintenance_service import AgentMaintenanceService
 from forge_api.application.auth.auth_service import AuthService
 from forge_api.application.auth.oauth_service import OAuthService
 from forge_api.application.auth.session_service import SessionService
@@ -127,7 +129,6 @@ def get_cache(request: Request) -> Redis:
 
 def get_cache_client_optional(request: Request) -> Redis | None:
     return getattr(request.app.state, "cache", None)
-
 
 
 # ─── Audit ──────────────────────────────────────────────────────────
@@ -324,9 +325,7 @@ def _build_index_service(
         workspaces=SqlWorkspaceRepository(db),
         git=git,
         parser=ForgeTreeSitterParser(),
-        embedding=build_embedding_provider(
-            settings.embedding_provider, settings.embedding_model
-        ),
+        embedding=build_embedding_provider(settings.embedding_provider, settings.embedding_model),
         chunker=ChunkingService(),
         resolver=DependencyResolver(),
         discovery=discovery,
@@ -355,9 +354,7 @@ def get_search_service(
         dependencies=SqlRepositoryDependencyRepository(db),
         chunks=SqlRepositoryChunkRepository(db),
         workspaces=SqlWorkspaceRepository(db),
-        embedding=build_embedding_provider(
-            settings.embedding_provider, settings.embedding_model
-        ),
+        embedding=build_embedding_provider(settings.embedding_provider, settings.embedding_model),
     )
 
 
@@ -390,9 +387,7 @@ def get_memory_service(
     return MemoryService(
         memories=SqlMemoryRepository(db),
         workspaces=SqlWorkspaceRepository(db),
-        embedding=build_embedding_provider(
-            settings.embedding_provider, settings.embedding_model
-        ),
+        embedding=build_embedding_provider(settings.embedding_provider, settings.embedding_model),
         audit=audit,
         max_content_length=settings.memory_max_content_length,
         max_tags=settings.memory_max_tags,
@@ -420,9 +415,7 @@ def get_context_assembly_service(
         memories=SqlMemoryRepository(db),
         search=get_search_service(db, settings),
         conversation=_conversation_store(cache, settings),
-        embedding=build_embedding_provider(
-            settings.embedding_provider, settings.embedding_model
-        ),
+        embedding=build_embedding_provider(settings.embedding_provider, settings.embedding_model),
         workspaces=SqlWorkspaceRepository(db),
         audit=audit,
         ranking=ContextRankingConfig(
@@ -439,7 +432,8 @@ def get_context_assembly_service(
 
 
 def _conversation_store(
-    cache: Redis, settings: Settings,
+    cache: Redis,
+    settings: Settings,
 ) -> RedisConversationContextStore | NullConversationContextStore:
     """Build the conversation store, falling back to a no-op when Redis is down.
 
@@ -466,9 +460,7 @@ def create_memory_maintenance_services(
     settings = get_settings()
     return MemoryMaintenanceService(
         memories=SqlMemoryRepository(db),
-        embedding=build_embedding_provider(
-            settings.embedding_provider, settings.embedding_model
-        ),
+        embedding=build_embedding_provider(settings.embedding_provider, settings.embedding_model),
         backfill_batch_size=settings.memory_embedding_backfill_batch_size,
     )
 
@@ -593,6 +585,40 @@ def get_agent_service(
         job_queue=SqlAgentJobQueue(db),
         coordinator=coordinator,
         event_publisher=publisher,
+        audit=AuditLogger(db),
+    )
+
+
+def get_agent_maintenance_service(
+    db: AsyncSession = Depends(get_session),
+    cache: Redis | None = Depends(get_cache_client_optional),
+) -> AgentMaintenanceService:
+
+    from forge_api.infrastructure.agent.event_publisher import (
+        NullAgentEventPublisher,
+        RedisAgentEventPublisher,
+    )
+    from forge_api.infrastructure.agent_approval_repository import (
+        SqlAgentApprovalRepository,
+    )
+    from forge_api.infrastructure.agent_job_queue import SqlAgentJobQueue
+    from forge_api.infrastructure.agent_session_repository import (
+        SqlAgentSessionRepository,
+    )
+    from forge_api.infrastructure.workers.agent_worker import (
+        RedisAgentCoordinator,
+    )
+
+    coordinator = RedisAgentCoordinator(cache) if cache else None
+    publisher = RedisAgentEventPublisher(cache) if cache else NullAgentEventPublisher()
+
+    return AgentMaintenanceService(
+        sessions=SqlAgentSessionRepository(db),
+        approvals=SqlAgentApprovalRepository(db),
+        job_queue=SqlAgentJobQueue(db),
+        coordinator=coordinator,
+        events=publisher,
+        audit=AuditLogger(db),
     )
 
 
@@ -609,4 +635,3 @@ def client_user_agent(request: Request) -> str | None:
 
 def client_device_name(request: Request) -> str | None:
     return request.headers.get("sec-ch-ua-platform")
-
