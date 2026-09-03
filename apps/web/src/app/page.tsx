@@ -20,25 +20,40 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-[var(--forge-bg)] text-[var(--forge-text-primary)] flex flex-col font-sans selection:bg-[var(--forge-accent)] selection:text-[var(--forge-accent-foreground)] overflow-x-hidden">
-      {/* Background ambient lighting effects matching reference */}
+      {/* ------------------------------------------------ */}
+      {/* Subtle Atmospheric Wave & Radial Background Texture */}
+      {/* ------------------------------------------------ */}
       <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
-        {/* Subtle upper ambient radial glow */}
-        <div className="absolute -top-40 right-1/4 w-[600px] h-[500px] bg-radial from-[#E5A952]/8 via-[#78B18A]/4 to-transparent blur-3xl opacity-70" />
-        {/* Subtle bottom wave glow */}
-        <div className="absolute -bottom-40 left-1/3 w-[800px] h-[400px] bg-radial from-[#78B18A]/6 via-[#E5A952]/4 to-transparent blur-3xl opacity-50" />
+        {/* Soft warm radial illumination */}
+        <div className="absolute -top-32 right-1/4 w-[700px] h-[550px] bg-radial from-[#e2caa6]/7 via-[#78b18a]/3 to-transparent blur-3xl opacity-70" />
+        <div className="absolute top-1/3 left-1/4 w-[600px] h-[450px] bg-radial from-[#78b18a]/4 via-[#e2caa6]/3 to-transparent blur-3xl opacity-50" />
+
+        {/* Faint subtle wave/topographic vector texture in background */}
+        <svg
+          className="absolute inset-0 w-full h-full opacity-[0.035] stroke-current text-[var(--forge-text-primary)]"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <defs>
+            <pattern id="heroWavePattern" width="120" height="120" patternUnits="userSpaceOnUse">
+              <path d="M0 60 Q30 40 60 60 T120 60" fill="none" strokeWidth="0.75" />
+              <path d="M0 120 Q30 100 60 120 T120 120" fill="none" strokeWidth="0.75" />
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#heroWavePattern)" />
+        </svg>
       </div>
 
       {/* ------------------------------------------------ */}
-      {/* 1. TOP NAVBAR (Restrained and thin) */}
+      {/* 1. TOP NAVBAR (Restrained, thin, horizontally balanced) */}
       {/* ------------------------------------------------ */}
-      <header className="sticky top-0 z-50 border-b border-[var(--forge-border)] bg-[var(--forge-bg)]/85 backdrop-blur-md px-4 sm:px-8 h-14 flex items-center justify-between transition-colors">
+      <header className="sticky top-0 z-50 border-b border-[var(--forge-border)] bg-[var(--forge-bg)]/90 backdrop-blur-md px-4 sm:px-8 h-13 flex items-center justify-between transition-colors">
         {/* Left: Forge Logo */}
         <div className="flex items-center gap-8">
           <Link href="/" className="hover:opacity-90 transition-opacity">
             <ForgeLogo size="sm" showTagline={false} />
           </Link>
 
-          {/* Center Navigation Links matching reference */}
+          {/* Center Navigation Links matching reference A */}
           <nav className="hidden lg:flex items-center gap-6 text-xs text-[var(--forge-text-secondary)] font-medium">
             <div className="flex items-center gap-1 cursor-pointer hover:text-[var(--forge-text-primary)] transition-colors">
               <span>Product</span>
@@ -75,7 +90,7 @@ export default function HomePage() {
           </Link>
           <Link
             href={`/workspaces/${defaultWorkspaceId}/agents/new`}
-            className="inline-flex items-center gap-1.5 rounded bg-[var(--forge-accent)] hover:bg-[var(--forge-accent-hover)] px-3.5 py-1.5 text-xs font-semibold text-[var(--forge-accent-foreground)] shadow-xs transition-colors"
+            className="inline-flex items-center gap-1.5 rounded-md bg-[var(--forge-accent)] hover:bg-[var(--forge-accent-hover)] px-3.5 py-1.5 text-xs font-semibold text-[var(--forge-accent-foreground)] shadow-xs transition-colors"
           >
             <span>Get started</span>
           </Link>
@@ -83,20 +98,20 @@ export default function HomePage() {
       </header>
 
       {/* ------------------------------------------------ */}
-      {/* 2. HERO SECTION (Two-Column Composition) */}
+      {/* 2. HERO SECTION (Dominant Two-Column Viewport) */}
       {/* ------------------------------------------------ */}
-      <section className="relative pt-12 sm:pt-20 pb-16 px-4 sm:px-8 max-w-7xl mx-auto w-full">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-center">
-          {/* Left Column: Typography & CTAs */}
-          <div className="lg:col-span-5 space-y-6 text-left">
+      <section className="relative pt-6 sm:pt-10 pb-8 px-4 sm:px-8 max-w-7xl mx-auto w-full">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-center">
+          {/* Left Column: Typography, CTAs, Trust Indicators (~42%) */}
+          <div className="lg:col-span-5 space-y-5 text-left">
             {/* Small Product Category Badge */}
             <div className="inline-flex items-center gap-2 rounded-full border border-[var(--forge-border)] bg-[var(--forge-surface)] px-3 py-1 text-[11px] font-mono text-[var(--forge-text-secondary)] uppercase tracking-wider shadow-2xs">
               <span className="h-1.5 w-1.5 rounded-full bg-[var(--forge-success)] animate-pulse" />
               <span>AI-POWERED DEVELOPMENT PLATFORM</span>
             </div>
 
-            {/* Large Headline with warm accent */}
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-[var(--forge-text-primary)] leading-[1.08]">
+            {/* Large Headline: warm white + soft champagne accent */}
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-[var(--forge-text-primary)] leading-[1.06]">
               Build better.
               <br />
               Ship faster.
@@ -113,7 +128,7 @@ export default function HomePage() {
             <div className="flex flex-wrap items-center gap-3 pt-1">
               <Link
                 href={`/workspaces/${defaultWorkspaceId}/agents/new`}
-                className="inline-flex items-center gap-2 rounded bg-[var(--forge-accent)] hover:bg-[var(--forge-accent-hover)] px-5 py-2.5 text-xs sm:text-sm font-semibold text-[var(--forge-accent-foreground)] shadow-sm transition-colors"
+                className="inline-flex items-center gap-2 rounded-md bg-[var(--forge-accent)] hover:bg-[var(--forge-accent-hover)] px-5 py-2.5 text-xs sm:text-sm font-semibold text-[var(--forge-accent-foreground)] shadow-sm transition-colors"
               >
                 <span>Start building for free</span>
                 <ArrowRight className="h-4 w-4" />
@@ -121,14 +136,14 @@ export default function HomePage() {
 
               <a
                 href="#demo"
-                className="inline-flex items-center gap-2 rounded border border-[var(--forge-border)] bg-[var(--forge-surface)] hover:bg-[var(--forge-surface-secondary)] hover:border-[var(--forge-border-highlight)] px-4 py-2.5 text-xs sm:text-sm font-medium text-[var(--forge-text-primary)] transition-colors"
+                className="inline-flex items-center gap-2 rounded-md border border-[var(--forge-border)] bg-[var(--forge-surface)] hover:bg-[var(--forge-surface-secondary)] hover:border-[var(--forge-border-highlight)] px-4 py-2.5 text-xs sm:text-sm font-medium text-[var(--forge-text-primary)] transition-colors"
               >
                 <span>Book a demo</span>
               </a>
             </div>
 
-            {/* Trust / Value Indicators */}
-            <div className="pt-4 border-t border-[var(--forge-border-subtle)] flex flex-wrap items-center gap-4 text-[11px] text-[var(--forge-text-muted)]">
+            {/* Trust / Value Indicators matching reference */}
+            <div className="pt-3 border-t border-[var(--forge-border-subtle)] flex flex-wrap items-center gap-4 text-[11px] text-[var(--forge-text-muted)]">
               <div className="flex items-center gap-1.5">
                 <Shield className="h-3.5 w-3.5 text-[var(--forge-text-muted)]" />
                 <span>Enterprise-grade security</span>
@@ -144,7 +159,7 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Right Column: Hero Product Preview & Floating Metrics */}
+          {/* Right Column: Dominant Large Forge Product Preview (~58%) */}
           <div className="lg:col-span-7">
             <HeroProductMockup />
           </div>
@@ -154,8 +169,8 @@ export default function HomePage() {
       {/* ------------------------------------------------ */}
       {/* 3. TRUST SECTION ("TRUSTED BY ENGINEERING TEAMS AT") */}
       {/* ------------------------------------------------ */}
-      <section className="py-12 border-y border-[var(--forge-border)] bg-[var(--forge-surface)]/50">
-        <div className="max-w-6xl mx-auto px-4 sm:px-8 space-y-6 text-center">
+      <section className="py-10 border-y border-[var(--forge-border)] bg-[var(--forge-surface)]/40">
+        <div className="max-w-6xl mx-auto px-4 sm:px-8 space-y-5 text-center">
           <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-[var(--forge-text-muted)] font-medium">
             TRUSTED BY ENGINEERING TEAMS AT
           </p>
@@ -182,7 +197,7 @@ export default function HomePage() {
               <span>statamic</span>
             </div>
             <div className="flex items-center gap-2 hover:text-[var(--forge-text-primary)] transition-colors">
-              <span className="text-base font-black">∞</span >
+              <span className="text-base font-black">∞</span>
               <span>Aceternity</span>
             </div>
           </div>
@@ -192,9 +207,9 @@ export default function HomePage() {
       {/* ------------------------------------------------ */}
       {/* 4. FEATURE SECTION ("Everything you need to build with AI") */}
       {/* ------------------------------------------------ */}
-      <section className="py-20 px-4 sm:px-8 max-w-6xl mx-auto w-full space-y-12">
+      <section className="py-16 sm:py-20 px-4 sm:px-8 max-w-6xl mx-auto w-full space-y-12">
         <div className="text-center space-y-3 max-w-xl mx-auto">
-          <div className="inline-flex items-center gap-1.5 text-[11px] font-mono text-[var(--forge-accent)] uppercase tracking-wider">
+          <div className="inline-flex items-center gap-1.5 text-[11px] font-mono text-[var(--forge-champagne)] uppercase tracking-wider">
             <span>◆</span>
             <span>BUILT FOR MODERN DEVELOPMENT</span>
           </div>
@@ -206,10 +221,10 @@ export default function HomePage() {
           </h2>
         </div>
 
-        {/* 4 Cards Grid matching reference */}
+        {/* 4 Cards Horizontal Grid matching Reference A */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Feature 1 */}
-          <div className="rounded-lg border border-[var(--forge-border)] bg-[var(--forge-surface)] p-5 flex flex-col justify-between space-y-4 hover:border-[var(--forge-border-highlight)] transition-colors group">
+          <div className="rounded-xl border border-[var(--forge-border)] bg-[var(--forge-surface)] p-5 flex flex-col justify-between space-y-4 hover:border-[var(--forge-border-highlight)] transition-colors group">
             <div className="space-y-3">
               <div className="h-8 w-8 rounded bg-[var(--forge-surface-secondary)] border border-[var(--forge-border)] flex items-center justify-center text-[var(--forge-accent)]">
                 <Sparkles className="h-4 w-4" />
@@ -227,7 +242,7 @@ export default function HomePage() {
           </div>
 
           {/* Feature 2 */}
-          <div className="rounded-lg border border-[var(--forge-border)] bg-[var(--forge-surface)] p-5 flex flex-col justify-between space-y-4 hover:border-[var(--forge-border-highlight)] transition-colors group">
+          <div className="rounded-xl border border-[var(--forge-border)] bg-[var(--forge-surface)] p-5 flex flex-col justify-between space-y-4 hover:border-[var(--forge-border-highlight)] transition-colors group">
             <div className="space-y-3">
               <div className="h-8 w-8 rounded bg-[var(--forge-surface-secondary)] border border-[var(--forge-border)] flex items-center justify-center text-[var(--forge-accent)]">
                 <Code2 className="h-4 w-4" />
@@ -245,7 +260,7 @@ export default function HomePage() {
           </div>
 
           {/* Feature 3 */}
-          <div className="rounded-lg border border-[var(--forge-border)] bg-[var(--forge-surface)] p-5 flex flex-col justify-between space-y-4 hover:border-[var(--forge-border-highlight)] transition-colors group">
+          <div className="rounded-xl border border-[var(--forge-border)] bg-[var(--forge-surface)] p-5 flex flex-col justify-between space-y-4 hover:border-[var(--forge-border-highlight)] transition-colors group">
             <div className="space-y-3">
               <div className="h-8 w-8 rounded bg-[var(--forge-surface-secondary)] border border-[var(--forge-border)] flex items-center justify-center text-[var(--forge-accent)]">
                 <Shield className="h-4 w-4" />
@@ -263,7 +278,7 @@ export default function HomePage() {
           </div>
 
           {/* Feature 4 */}
-          <div className="rounded-lg border border-[var(--forge-border)] bg-[var(--forge-surface)] p-5 flex flex-col justify-between space-y-4 hover:border-[var(--forge-border-highlight)] transition-colors group">
+          <div className="rounded-xl border border-[var(--forge-border)] bg-[var(--forge-surface)] p-5 flex flex-col justify-between space-y-4 hover:border-[var(--forge-border-highlight)] transition-colors group">
             <div className="space-y-3">
               <div className="h-8 w-8 rounded bg-[var(--forge-surface-secondary)] border border-[var(--forge-border)] flex items-center justify-center text-[var(--forge-accent)]">
                 <Users className="h-4 w-4" />
@@ -285,10 +300,10 @@ export default function HomePage() {
       {/* ------------------------------------------------ */}
       {/* 5. PRODUCT DEMO SECTION ("See Forge in action") */}
       {/* ------------------------------------------------ */}
-      <section id="demo" className="py-12 px-4 sm:px-8 max-w-6xl mx-auto w-full pb-20">
-        <div className="rounded-xl border border-[var(--forge-border)] bg-[var(--forge-surface)] p-6 sm:p-10 flex flex-col lg:flex-row items-center justify-between gap-8 shadow-xl relative overflow-hidden">
+      <section id="demo" className="py-10 px-4 sm:px-8 max-w-6xl mx-auto w-full">
+        <div className="rounded-2xl border border-[var(--forge-border)] bg-[var(--forge-surface)] p-6 sm:p-10 flex flex-col lg:flex-row items-center justify-between gap-8 shadow-xl relative overflow-hidden">
           {/* Background subtle illumination */}
-          <div className="absolute top-0 right-1/3 w-96 h-96 bg-radial from-[#78B18A]/10 via-[#E5A952]/5 to-transparent blur-3xl pointer-events-none" />
+          <div className="absolute top-0 right-1/3 w-96 h-96 bg-radial from-[#78B18A]/8 via-[#e2caa6]/4 to-transparent blur-3xl pointer-events-none" />
 
           {/* Left Text & CTA */}
           <div className="space-y-4 max-w-md text-left z-10">
@@ -301,7 +316,7 @@ export default function HomePage() {
             <div className="pt-2">
               <Link
                 href={`/workspaces/${defaultWorkspaceId}/agents/new`}
-                className="inline-flex items-center gap-2 rounded bg-[var(--forge-accent)] hover:bg-[var(--forge-accent-hover)] px-4 py-2 text-xs font-semibold text-[var(--forge-accent-foreground)] shadow-xs transition-colors"
+                className="inline-flex items-center gap-2 rounded-md bg-[var(--forge-accent)] hover:bg-[var(--forge-accent-hover)] px-4 py-2 text-xs font-semibold text-[var(--forge-accent-foreground)] shadow-xs transition-colors"
               >
                 <span>Book a demo</span>
                 <ArrowRight className="h-3.5 w-3.5" />
@@ -310,7 +325,7 @@ export default function HomePage() {
           </div>
 
           {/* Right Video / Preview Card */}
-          <div className="w-full lg:w-96 rounded-lg border border-[var(--forge-border)] bg-[var(--forge-surface-secondary)] p-6 flex items-center gap-4 z-10 shadow-lg cursor-pointer hover:border-[var(--forge-border-highlight)] transition-colors group">
+          <div className="w-full lg:w-96 rounded-xl border border-[var(--forge-border)] bg-[var(--forge-surface-secondary)] p-6 flex items-center gap-4 z-10 shadow-lg cursor-pointer hover:border-[var(--forge-border-highlight)] transition-colors group">
             {/* Play Button */}
             <div className="h-12 w-12 rounded-full bg-[var(--forge-accent)] text-[var(--forge-accent-foreground)] flex items-center justify-center shadow-md group-hover:scale-105 transition-transform shrink-0">
               <Play className="h-5 w-5 fill-current ml-0.5" />
@@ -330,7 +345,7 @@ export default function HomePage() {
       {/* ------------------------------------------------ */}
       {/* 6. FINAL CTA ("Build the future of software.") */}
       {/* ------------------------------------------------ */}
-      <section className="py-20 px-4 sm:px-8 max-w-4xl mx-auto w-full text-center space-y-6">
+      <section className="py-16 sm:py-20 px-4 sm:px-8 max-w-4xl mx-auto w-full text-center space-y-5">
         <h2 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-[var(--forge-text-primary)] leading-tight">
           Build the future of software.
         </h2>
@@ -340,7 +355,7 @@ export default function HomePage() {
         <div className="pt-2">
           <Link
             href={`/workspaces/${defaultWorkspaceId}/agents/new`}
-            className="inline-flex items-center gap-2 rounded bg-[var(--forge-accent)] hover:bg-[var(--forge-accent-hover)] px-6 py-3 text-xs sm:text-sm font-semibold text-[var(--forge-accent-foreground)] shadow-sm transition-colors"
+            className="inline-flex items-center gap-2 rounded-md bg-[var(--forge-accent)] hover:bg-[var(--forge-accent-hover)] px-6 py-3 text-xs sm:text-sm font-semibold text-[var(--forge-accent-foreground)] shadow-sm transition-colors"
           >
             <span>Start building for free</span>
             <ArrowRight className="h-4 w-4" />
