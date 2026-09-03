@@ -16,9 +16,9 @@ export function DiffViewer({ diff, filePath, operation }: DiffViewerProps) {
 
   if (!diff || parsed.hunks.length === 0) {
     return (
-      <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-8 text-center text-neutral-400">
-        <FileCode className="mx-auto h-8 w-8 text-neutral-500 mb-2" />
-        <p className="text-sm">No diff content available for this file.</p>
+      <div className="rounded-lg border border-[var(--forge-border)] bg-[var(--forge-surface)] p-8 text-center text-[var(--forge-text-secondary)]">
+        <FileCode className="mx-auto h-7 w-7 text-[var(--forge-text-muted)] mb-2" />
+        <p className="text-xs">No diff content available for this file.</p>
       </div>
     );
   }
@@ -26,22 +26,22 @@ export function DiffViewer({ diff, filePath, operation }: DiffViewerProps) {
   const displayPath = filePath || parsed.toFile || parsed.fromFile || 'unknown';
 
   return (
-    <div className="rounded-xl border border-neutral-800 bg-neutral-950/90 overflow-hidden shadow-lg">
+    <div className="rounded-lg border border-[var(--forge-border)] bg-[var(--forge-surface)] overflow-hidden shadow-xs">
       {/* File Header */}
-      <div className="flex items-center justify-between border-b border-neutral-800/80 bg-neutral-900/80 px-4 py-2.5">
+      <div className="flex items-center justify-between border-b border-[var(--forge-border)] bg-[var(--forge-surface-secondary)] px-4 py-2">
         <div className="flex items-center space-x-2 min-w-0">
-          <FileCode className="h-4 w-4 shrink-0 text-sky-400" />
-          <span className="font-mono text-xs font-semibold text-neutral-200 truncate">
+          <FileCode className="h-4 w-4 shrink-0 text-[var(--forge-text-secondary)]" />
+          <span className="font-mono text-xs font-semibold text-[var(--forge-text-primary)] truncate">
             {displayPath}
           </span>
           {operation && (
             <span
-              className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+              className={`rounded px-1.5 py-0.2 text-[10px] font-semibold uppercase tracking-wider ${
                 operation === 'ADDED'
-                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                  ? 'bg-[var(--forge-success-surface)] text-[var(--forge-success)] border border-[var(--forge-success-border)]'
                   : operation === 'DELETED'
-                  ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30'
-                  : 'bg-sky-500/10 text-sky-400 border border-sky-500/30'
+                  ? 'bg-[var(--forge-danger-surface)] text-[var(--forge-danger)] border border-[var(--forge-danger-border)]'
+                  : 'bg-[var(--forge-surface)] text-[var(--forge-text-secondary)] border border-[var(--forge-border)]'
               }`}
             >
               {operation}
@@ -51,13 +51,13 @@ export function DiffViewer({ diff, filePath, operation }: DiffViewerProps) {
 
         <div className="flex items-center space-x-2 text-xs font-mono">
           {parsed.additions > 0 && (
-            <span className="flex items-center text-emerald-400">
+            <span className="flex items-center text-[var(--forge-success)]">
               <Plus className="h-3 w-3 mr-0.5" />
               {parsed.additions}
             </span>
           )}
           {parsed.deletions > 0 && (
-            <span className="flex items-center text-rose-400">
+            <span className="flex items-center text-[var(--forge-danger)]">
               <Minus className="h-3 w-3 mr-0.5" />
               {parsed.deletions}
             </span>
@@ -68,9 +68,9 @@ export function DiffViewer({ diff, filePath, operation }: DiffViewerProps) {
       {/* Diff Table */}
       <div className="overflow-x-auto font-mono text-xs leading-5 select-text">
         {parsed.hunks.map((hunk, hunkIdx) => (
-          <div key={`hunk-${hunkIdx}`} className="border-b border-neutral-900 last:border-b-0">
+          <div key={`hunk-${hunkIdx}`} className="border-b border-[var(--forge-border-subtle)] last:border-b-0">
             {/* Hunk Header */}
-            <div className="bg-sky-950/20 text-sky-400/80 px-4 py-1 text-[11px] font-semibold border-y border-neutral-800/40 select-none">
+            <div className="bg-[var(--forge-surface-secondary)] text-[var(--forge-text-muted)] px-4 py-1 text-[11px] font-medium border-y border-[var(--forge-border-subtle)] select-none">
               {hunk.header}
             </div>
 
@@ -82,37 +82,37 @@ export function DiffViewer({ diff, filePath, operation }: DiffViewerProps) {
                   const isDelete = line.type === 'delete';
 
                   const rowBg = isAdd
-                    ? 'bg-emerald-950/20 hover:bg-emerald-950/30 text-emerald-200'
+                    ? 'bg-[var(--forge-success-surface)] text-[var(--forge-text-primary)]'
                     : isDelete
-                    ? 'bg-rose-950/20 hover:bg-rose-950/30 text-rose-200'
-                    : 'hover:bg-neutral-900/40 text-neutral-300';
+                    ? 'bg-[var(--forge-danger-surface)] text-[var(--forge-text-primary)]'
+                    : 'hover:bg-[var(--forge-surface-secondary)] text-[var(--forge-text-secondary)]';
 
                   const prefixColor = isAdd
-                    ? 'text-emerald-400 font-bold'
+                    ? 'text-[var(--forge-success)] font-semibold'
                     : isDelete
-                    ? 'text-rose-400 font-bold'
-                    : 'text-neutral-600';
+                    ? 'text-[var(--forge-danger)] font-semibold'
+                    : 'text-[var(--forge-text-muted)]';
 
                   return (
                     <tr key={`line-${hunkIdx}-${lineIdx}`} className={`group ${rowBg}`}>
                       {/* Old Line Number */}
-                      <td className="w-10 select-none px-2 py-0.5 text-right font-mono text-[10px] text-neutral-600 group-hover:text-neutral-500 border-r border-neutral-800/40">
+                      <td className="w-10 select-none px-2 py-0.5 text-right font-mono text-[10px] text-[var(--forge-text-muted)] border-r border-[var(--forge-border-subtle)]">
                         {line.oldLineNumber ?? ''}
                       </td>
 
                       {/* New Line Number */}
-                      <td className="w-10 select-none px-2 py-0.5 text-right font-mono text-[10px] text-neutral-600 group-hover:text-neutral-500 border-r border-neutral-800/40">
+                      <td className="w-10 select-none px-2 py-0.5 text-right font-mono text-[10px] text-[var(--forge-text-muted)] border-r border-[var(--forge-border-subtle)]">
                         {line.newLineNumber ?? ''}
                       </td>
 
-                      {/* Marker (+, -, ' ') */}
-                      <td className={`w-5 select-none px-1 py-0.5 text-center ${prefixColor}`}>
-                        {isAdd ? '+' : isDelete ? '-' : ' '}
+                      {/* Operation Marker (+, -, space) */}
+                      <td className={`w-6 select-none px-1.5 py-0.5 text-center font-mono ${prefixColor}`}>
+                        {line.type === 'add' ? '+' : line.type === 'delete' ? '-' : ' '}
                       </td>
 
-                      {/* Line content (pure text rendering, zero XSS vulnerability) */}
-                      <td className="px-2 py-0.5 whitespace-pre font-mono">
-                        {line.content}
+                      {/* Code Content */}
+                      <td className="px-2 py-0.5 font-mono whitespace-pre overflow-x-auto">
+                        <span>{line.content}</span>
                       </td>
                     </tr>
                   );

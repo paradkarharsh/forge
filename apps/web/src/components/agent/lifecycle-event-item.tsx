@@ -22,80 +22,80 @@ export function LifecycleEventItem({ event }: LifecycleEventItemProps) {
     switch (event.event_type) {
       case 'agent.created':
         return {
-          icon: <Clock className="h-3.5 w-3.5 text-zinc-400" />,
+          icon: <Clock className="h-3 w-3 text-[var(--forge-text-muted)]" />,
           title: 'Session Created',
           description: 'Agent session initialized in workspace',
-          color: 'text-zinc-400',
+          color: 'text-[var(--forge-text-muted)]',
         };
       case 'agent.planning_started':
         return {
-          icon: <Compass className="h-3.5 w-3.5 text-blue-400" />,
+          icon: <Compass className="h-3 w-3 text-[var(--forge-accent)]" />,
           title: 'Planning Started',
           description: 'Analyzing repository structure and context',
-          color: 'text-blue-400',
+          color: 'text-[var(--forge-accent)]',
         };
       case 'agent.plan_created':
         return {
-          icon: <FileCheck className="h-3.5 w-3.5 text-indigo-400" />,
+          icon: <FileCheck className="h-3 w-3 text-[var(--forge-accent)]" />,
           title: 'Execution Plan Formulated',
           description: 'Step breakdown generated for agent execution',
-          color: 'text-indigo-400',
+          color: 'text-[var(--forge-accent)]',
         };
       case 'agent.running':
         return {
-          icon: <Play className="h-3.5 w-3.5 text-indigo-400" />,
+          icon: <Play className="h-3 w-3 text-[var(--forge-success)]" />,
           title: 'Execution In Progress',
           description: 'Executing scheduled tasks and tools',
-          color: 'text-indigo-400',
+          color: 'text-[var(--forge-success)]',
         };
       case 'agent.approval_requested':
         return {
-          icon: <ShieldAlert className="h-3.5 w-3.5 text-amber-400" />,
+          icon: <ShieldAlert className="h-3 w-3 text-[var(--forge-warning)]" />,
           title: 'Approval Required',
           description: 'Execution paused awaiting human authorization',
-          color: 'text-amber-400',
+          color: 'text-[var(--forge-warning)]',
         };
       case 'agent.approval_granted':
         return {
-          icon: <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />,
+          icon: <CheckCircle2 className="h-3 w-3 text-[var(--forge-success)]" />,
           title: 'Approval Granted',
           description: 'Resuming agent execution',
-          color: 'text-emerald-400',
+          color: 'text-[var(--forge-success)]',
         };
       case 'agent.approval_denied':
         return {
-          icon: <XCircle className="h-3.5 w-3.5 text-rose-400" />,
+          icon: <XCircle className="h-3 w-3 text-[var(--forge-danger)]" />,
           title: 'Approval Denied',
           description: 'Tool execution rejected by user',
-          color: 'text-rose-400',
+          color: 'text-[var(--forge-danger)]',
         };
       case 'agent.completed':
         return {
-          icon: <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />,
+          icon: <CheckCircle2 className="h-3 w-3 text-[var(--forge-success)]" />,
           title: 'Agent Completed',
           description: 'All steps executed successfully',
-          color: 'text-emerald-400',
+          color: 'text-[var(--forge-success)]',
         };
       case 'agent.cancelled':
         return {
-          icon: <Ban className="h-3.5 w-3.5 text-zinc-400" />,
+          icon: <Ban className="h-3 w-3 text-[var(--forge-text-muted)]" />,
           title: 'Execution Cancelled',
           description: 'Session stopped by user request',
-          color: 'text-zinc-400',
+          color: 'text-[var(--forge-text-muted)]',
         };
       case 'agent.failed':
         return {
-          icon: <XCircle className="h-3.5 w-3.5 text-rose-400" />,
+          icon: <XCircle className="h-3 w-3 text-[var(--forge-danger)]" />,
           title: 'Execution Failed',
           description: String(event.data?.error || event.data?.reason || 'An unexpected error occurred'),
-          color: 'text-rose-400',
+          color: 'text-[var(--forge-danger)]',
         };
       default:
         return {
-          icon: <Clock className="h-3.5 w-3.5 text-zinc-500" />,
+          icon: <Clock className="h-3 w-3 text-[var(--forge-text-muted)]" />,
           title: event.event_type.replace('agent.', '').replace(/_/g, ' '),
           description: '',
-          color: 'text-zinc-400',
+          color: 'text-[var(--forge-text-secondary)]',
         };
     }
   };
@@ -103,19 +103,19 @@ export function LifecycleEventItem({ event }: LifecycleEventItemProps) {
   const meta = getEventMeta();
 
   return (
-    <div className="flex items-center justify-between gap-3 py-1 px-3 rounded-md bg-zinc-900/30 border border-zinc-800/40 text-xs">
+    <div className="flex items-center justify-between gap-2.5 py-1 px-2.5 rounded bg-[var(--forge-surface-secondary)] border border-[var(--forge-border-subtle)] text-xs">
       <div className="flex items-center gap-2 min-w-0">
         <div className="shrink-0">{meta.icon}</div>
-        <span className={`font-medium capitalize ${meta.color}`}>
+        <span className={`font-medium capitalize text-[11px] ${meta.color}`}>
           {meta.title}
         </span>
         {meta.description && (
-          <span className="text-zinc-500 truncate hidden sm:inline">
+          <span className="text-[11px] text-[var(--forge-text-muted)] truncate hidden sm:inline">
             — {meta.description}
           </span>
         )}
       </div>
-      <span className="text-[11px] font-mono text-zinc-500 shrink-0">
+      <span className="text-[10px] font-mono text-[var(--forge-text-muted)] shrink-0">
         {formatRelativeTime(event.timestamp)}
       </span>
     </div>

@@ -38,37 +38,37 @@ export function CancelModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="cancel-modal-title"
     >
-      <div className="w-full max-w-md rounded-xl border border-zinc-800 bg-zinc-950 p-6 shadow-2xl space-y-4 text-zinc-100">
+      <div className="w-full max-w-md rounded-lg border border-[var(--forge-border)] bg-[var(--forge-surface)] p-5 shadow-xl space-y-4 text-[var(--forge-text-primary)]">
         <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20">
-            <AlertTriangle className="h-5 w-5" />
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-[var(--forge-danger-surface)] text-[var(--forge-danger)] border border-[var(--forge-danger-border)]">
+            <AlertTriangle className="h-4 w-4" />
           </div>
           <div className="space-y-1">
-            <h2 id="cancel-modal-title" className="text-base font-semibold text-zinc-100">
+            <h2 id="cancel-modal-title" className="text-sm font-semibold text-[var(--forge-text-primary)]">
               Cancel Agent Execution?
             </h2>
-            <p className="text-sm text-zinc-400 leading-relaxed">
+            <p className="text-xs text-[var(--forge-text-secondary)] leading-relaxed">
               Are you sure you want to stop this agent? Any active tool execution will be terminated immediately. This action cannot be undone.
             </p>
           </div>
         </div>
 
-        <div className="rounded-lg border border-zinc-800/80 bg-zinc-900/50 p-3 text-xs text-zinc-400 line-clamp-2">
-          <span className="font-medium text-zinc-300">Objective: </span>
+        <div className="rounded border border-[var(--forge-border-subtle)] bg-[var(--forge-surface-secondary)] p-2.5 text-xs text-[var(--forge-text-secondary)] line-clamp-2">
+          <span className="font-medium text-[var(--forge-text-primary)]">Objective: </span>
           {objective}
         </div>
 
-        <div className="flex items-center justify-end gap-3 pt-2">
+        <div className="flex items-center justify-end gap-2.5 pt-1">
           <button
             type="button"
             disabled={isCancelling}
             onClick={onClose}
-            className="rounded-lg px-4 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100 transition-colors disabled:opacity-50"
+            className="rounded border border-[var(--forge-border)] px-3 py-1.5 text-xs font-medium text-[var(--forge-text-secondary)] hover:text-[var(--forge-text-primary)] hover:border-[var(--forge-border-highlight)] transition-colors disabled:opacity-50"
           >
             Keep Running
           </button>
@@ -76,15 +76,15 @@ export function CancelModal({
             type="button"
             disabled={isCancelling}
             onClick={onConfirm}
-            className="inline-flex items-center gap-2 rounded-lg bg-rose-600 hover:bg-rose-700 px-4 py-2 text-sm font-medium text-white shadow-xs transition-colors disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded border border-[var(--forge-danger-border)] bg-[var(--forge-danger-surface)] hover:bg-[var(--forge-danger-border)] px-3.5 py-1.5 text-xs font-medium text-[var(--forge-danger)] hover:text-white shadow-xs transition-colors disabled:opacity-50"
           >
             {isCancelling ? (
               <>
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 <span>Cancelling...</span>
               </>
             ) : (
-              <span>Yes, Cancel Agent</span>
+              <span>Confirm Cancellation</span>
             )}
           </button>
         </div>

@@ -3,12 +3,12 @@
 import {
   AlertCircle,
   ArrowRight,
+  Bot,
   ChevronDown,
   ChevronRight,
   Cpu,
   Gauge,
   Loader2,
-  Sparkles,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
@@ -76,7 +76,6 @@ export function CreateAgentForm({
       try {
         await agentService.runSession(workspaceId, session.id);
       } catch (runErr) {
-        // If run fails, the session is still created; user can view or retry
         console.warn('Initial session run dispatch failed:', runErr);
       }
 
@@ -99,35 +98,35 @@ export function CreateAgentForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6 max-w-3xl">
+    <form onSubmit={handleSubmit} className="space-y-5 max-w-2xl">
       {/* Error alert */}
       {error && (
-        <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-4 flex items-start gap-3 text-xs text-rose-200">
-          <AlertCircle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <span className="font-semibold text-rose-300">Creation Failed</span>
-            <p className="font-mono">{error}</p>
+        <div className="rounded border border-[var(--forge-danger-border)] bg-[var(--forge-danger-surface)] p-3 flex items-start gap-2.5 text-xs text-[var(--forge-danger)]">
+          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+          <div className="space-y-0.5">
+            <span className="font-semibold">Creation Failed</span>
+            <p className="font-mono text-[11px]">{error}</p>
           </div>
         </div>
       )}
 
       {/* Objective Input */}
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         <div className="flex items-center justify-between">
           <label
             htmlFor="agent-objective"
-            className="text-xs font-semibold text-zinc-200 uppercase tracking-wider flex items-center gap-1.5"
+            className="text-xs font-semibold text-[var(--forge-text-primary)] uppercase tracking-wider flex items-center gap-1.5"
           >
-            <Sparkles className="h-3.5 w-3.5 text-indigo-400" />
-            <span>Task Instruction & Objective</span>
+            <Bot className="h-3.5 w-3.5 text-[var(--forge-accent)]" />
+            <span>Task Objective</span>
           </label>
           <span
             className={`text-[11px] font-mono ${
               charCount > 10000
-                ? 'text-rose-400'
+                ? 'text-[var(--forge-danger)]'
                 : charCount > 8000
-                ? 'text-amber-400'
-                : 'text-zinc-500'
+                ? 'text-[var(--forge-warning)]'
+                : 'text-[var(--forge-text-muted)]'
             }`}
           >
             {charCount.toLocaleString()} / 10,000
@@ -141,31 +140,31 @@ export function CreateAgentForm({
           onChange={(e) => setObjective(e.target.value)}
           placeholder="E.g. Refactor the authentication service to use Argon2 hashing, update relevant unit tests, and verify the full test suite passes..."
           required
-          className="w-full rounded-xl border border-zinc-800 bg-zinc-900/60 p-3.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-indigo-500 focus:outline-hidden transition-colors resize-y leading-relaxed font-sans"
+          className="w-full rounded border border-[var(--forge-border)] bg-[var(--forge-surface)] p-3 text-xs text-[var(--forge-text-primary)] placeholder-[var(--forge-text-muted)] focus:border-[var(--forge-accent)] focus:outline-hidden transition-colors resize-y leading-relaxed font-sans"
         />
 
-        <p className="text-[11px] text-zinc-500 leading-normal">
-          Be specific about the expected outcomes, modified files, or test commands. The agent will formulate an execution plan, inspect context, and request approval before high-risk changes.
+        <p className="text-[11px] text-[var(--forge-text-muted)] leading-normal">
+          Be specific about affected files, target symbols, and required validations. Forge agents formulate bounded plans and request approval before high-risk changes.
         </p>
       </div>
 
       {/* Model Selection */}
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         <label
           htmlFor="agent-model"
-          className="text-xs font-semibold text-zinc-200 uppercase tracking-wider flex items-center gap-1.5"
+          className="text-xs font-semibold text-[var(--forge-text-primary)] uppercase tracking-wider flex items-center gap-1.5"
         >
-          <Cpu className="h-3.5 w-3.5 text-zinc-400" />
+          <Cpu className="h-3.5 w-3.5 text-[var(--forge-text-muted)]" />
           <span>LLM Model</span>
         </label>
         <select
           id="agent-model"
           value={selectedModel}
           onChange={(e) => setSelectedModel(e.target.value)}
-          className="w-full sm:w-80 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-xs text-zinc-200 focus:border-indigo-500 focus:outline-hidden transition-colors"
+          className="w-full sm:w-72 rounded border border-[var(--forge-border)] bg-[var(--forge-surface)] px-2.5 py-1.5 text-xs text-[var(--forge-text-primary)] focus:border-[var(--forge-accent)] focus:outline-hidden transition-colors"
         >
           {AVAILABLE_MODELS.map((m) => (
-            <option key={m.id} value={m.id} className="bg-zinc-950 text-zinc-200">
+            <option key={m.id} value={m.id} className="bg-[var(--forge-surface)] text-[var(--forge-text-primary)]">
               {m.label}
             </option>
           ))}
@@ -173,28 +172,28 @@ export function CreateAgentForm({
       </div>
 
       {/* Advanced Execution Limits Collapsible */}
-      <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/40 p-4 space-y-4">
+      <div className="rounded border border-[var(--forge-border)] bg-[var(--forge-surface)] p-3.5 space-y-3">
         <button
           type="button"
           onClick={() => setShowAdvanced(!showAdvanced)}
-          className="flex items-center justify-between w-full text-left text-xs font-semibold text-zinc-300 hover:text-zinc-100 transition-colors"
+          className="flex items-center justify-between w-full text-left text-xs font-semibold text-[var(--forge-text-primary)] hover:text-[var(--forge-accent)] transition-colors"
         >
           <div className="flex items-center gap-2">
-            <Gauge className="h-4 w-4 text-zinc-500" />
-            <span>Advanced Execution Limits</span>
+            <Gauge className="h-3.5 w-3.5 text-[var(--forge-text-muted)]" />
+            <span>Execution Limits</span>
           </div>
           {showAdvanced ? (
-            <ChevronDown className="h-4 w-4 text-zinc-500" />
+            <ChevronDown className="h-3.5 w-3.5 text-[var(--forge-text-muted)]" />
           ) : (
-            <ChevronRight className="h-4 w-4 text-zinc-500" />
+            <ChevronRight className="h-3.5 w-3.5 text-[var(--forge-text-muted)]" />
           )}
         </button>
 
         {showAdvanced && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-zinc-800/60 text-xs">
-            <div className="space-y-1.5">
-              <label htmlFor="wall-time-limit" className="text-zinc-400 font-medium">
-                Max Wall Time (seconds)
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2.5 border-t border-[var(--forge-border-subtle)] text-xs">
+            <div className="space-y-1">
+              <label htmlFor="wall-time-limit" className="text-[var(--forge-text-secondary)] font-medium">
+                Max Wall Time (s)
               </label>
               <input
                 id="wall-time-limit"
@@ -203,13 +202,13 @@ export function CreateAgentForm({
                 max={3600}
                 value={maxWallTime}
                 onChange={(e) => setMaxWallTime(Number(e.target.value))}
-                className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-200 font-mono focus:border-indigo-500 focus:outline-hidden"
+                className="w-full rounded border border-[var(--forge-border)] bg-[var(--forge-surface-secondary)] px-2.5 py-1 text-xs text-[var(--forge-text-primary)] font-mono focus:border-[var(--forge-accent)] focus:outline-hidden"
               />
-              <span className="text-[10px] text-zinc-600 block">Default: 900s (15 min)</span>
+              <span className="text-[10px] text-[var(--forge-text-muted)] block">Default: 900s</span>
             </div>
 
-            <div className="space-y-1.5">
-              <label htmlFor="llm-calls-limit" className="text-zinc-400 font-medium">
+            <div className="space-y-1">
+              <label htmlFor="llm-calls-limit" className="text-[var(--forge-text-secondary)] font-medium">
                 Max LLM Calls
               </label>
               <input
@@ -219,13 +218,13 @@ export function CreateAgentForm({
                 max={50}
                 value={maxLlmCalls}
                 onChange={(e) => setMaxLlmCalls(Number(e.target.value))}
-                className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-200 font-mono focus:border-indigo-500 focus:outline-hidden"
+                className="w-full rounded border border-[var(--forge-border)] bg-[var(--forge-surface-secondary)] px-2.5 py-1 text-xs text-[var(--forge-text-primary)] font-mono focus:border-[var(--forge-accent)] focus:outline-hidden"
               />
-              <span className="text-[10px] text-zinc-600 block">Default: 30 calls</span>
+              <span className="text-[10px] text-[var(--forge-text-muted)] block">Default: 30 calls</span>
             </div>
 
-            <div className="space-y-1.5">
-              <label htmlFor="tool-calls-limit" className="text-zinc-400 font-medium">
+            <div className="space-y-1">
+              <label htmlFor="tool-calls-limit" className="text-[var(--forge-text-secondary)] font-medium">
                 Max Tool Calls
               </label>
               <input
@@ -235,9 +234,9 @@ export function CreateAgentForm({
                 max={100}
                 value={maxToolCalls}
                 onChange={(e) => setMaxToolCalls(Number(e.target.value))}
-                className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-200 font-mono focus:border-indigo-500 focus:outline-hidden"
+                className="w-full rounded border border-[var(--forge-border)] bg-[var(--forge-surface-secondary)] px-2.5 py-1 text-xs text-[var(--forge-text-primary)] font-mono focus:border-[var(--forge-accent)] focus:outline-hidden"
               />
-              <span className="text-[10px] text-zinc-600 block">Default: 50 calls</span>
+              <span className="text-[10px] text-[var(--forge-text-muted)] block">Default: 50 calls</span>
             </div>
           </div>
         )}
@@ -249,7 +248,7 @@ export function CreateAgentForm({
           type="button"
           onClick={() => router.back()}
           disabled={isSubmitting}
-          className="rounded-lg px-4 py-2 text-xs font-medium text-zinc-400 hover:text-zinc-200 transition-colors disabled:opacity-50"
+          className="rounded px-3 py-1.5 text-xs font-medium text-[var(--forge-text-secondary)] hover:text-[var(--forge-text-primary)] transition-colors disabled:opacity-50"
         >
           Cancel
         </button>
@@ -257,11 +256,11 @@ export function CreateAgentForm({
         <button
           type="submit"
           disabled={!isValid || isSubmitting}
-          className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 px-5 py-2.5 text-xs font-semibold text-white shadow-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex items-center gap-1.5 rounded bg-[var(--forge-accent)] px-4 py-1.5 text-xs font-semibold text-[var(--forge-accent-foreground)] hover:bg-[var(--forge-accent-hover)] shadow-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isSubmitting ? (
             <>
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
               <span>Initializing Agent...</span>
             </>
           ) : (

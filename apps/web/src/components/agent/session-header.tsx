@@ -57,10 +57,10 @@ export function SessionHeader({
     if (connectionStatus === 'connected') {
       return (
         <span
-          className="inline-flex items-center gap-1.5 text-xs text-emerald-400/90 font-mono"
+          className="inline-flex items-center gap-1.5 text-xs text-[var(--forge-success)] font-mono"
           title="Real-time SSE stream connected"
         >
-          <Wifi className="h-3 w-3 text-emerald-400" />
+          <Wifi className="h-3 w-3" />
           <span className="hidden sm:inline">Live</span>
         </span>
       );
@@ -68,28 +68,28 @@ export function SessionHeader({
     if (connectionStatus === 'reconnecting') {
       return (
         <span
-          className="inline-flex items-center gap-1.5 text-xs text-amber-400 font-mono animate-pulse"
+          className="inline-flex items-center gap-1.5 text-xs text-[var(--forge-warning)] font-mono animate-pulse"
           title="Stream interrupted, attempting to resume"
         >
-          <Radio className="h-3 w-3 text-amber-400" />
+          <Radio className="h-3 w-3" />
           <span>Reconnecting...</span>
         </span>
       );
     }
     if (connectionStatus === 'connecting') {
       return (
-        <span className="inline-flex items-center gap-1.5 text-xs text-zinc-400 font-mono">
-          <Radio className="h-3 w-3 text-zinc-400" />
+        <span className="inline-flex items-center gap-1.5 text-xs text-[var(--forge-text-muted)] font-mono">
+          <Radio className="h-3 w-3" />
           <span>Connecting...</span>
         </span>
       );
     }
     return (
       <span
-        className="inline-flex items-center gap-1.5 text-xs text-zinc-500 font-mono"
+        className="inline-flex items-center gap-1.5 text-xs text-[var(--forge-text-muted)] font-mono"
         title="Event stream disconnected"
       >
-        <WifiOff className="h-3 w-3 text-zinc-500" />
+        <WifiOff className="h-3 w-3" />
       </span>
     );
   };
@@ -99,60 +99,60 @@ export function SessionHeader({
     : `/workspaces/${workspaceId}/agents`;
 
   return (
-    <header className="border-b border-zinc-800 bg-zinc-950/70 backdrop-blur-md px-4 sm:px-6 py-4">
+    <header className="border-b border-[var(--forge-border)] bg-[var(--forge-surface)] px-4 sm:px-6 py-3.5">
       {/* Breadcrumbs */}
-      <div className="flex items-center gap-2 text-xs text-zinc-400 mb-2.5">
+      <div className="flex items-center gap-2 text-xs text-[var(--forge-text-muted)] mb-2">
         <Link
           href={`/workspaces/${workspaceId}`}
-          className="hover:text-zinc-200 transition-colors"
+          className="hover:text-[var(--forge-text-primary)] transition-colors"
         >
           Workspace
         </Link>
-        <ChevronRight className="h-3.5 w-3.5 text-zinc-600" />
+        <ChevronRight className="h-3 w-3 text-[var(--forge-text-muted)]" />
         {repositoryId && (
           <>
-            <span className="inline-flex items-center gap-1 text-zinc-400">
-              <GitBranch className="h-3 w-3 text-zinc-500" />
+            <span className="inline-flex items-center gap-1 text-[var(--forge-text-secondary)]">
+              <GitBranch className="h-3 w-3 text-[var(--forge-text-muted)]" />
               <span>Repository</span>
             </span>
-            <ChevronRight className="h-3.5 w-3.5 text-zinc-600" />
+            <ChevronRight className="h-3 w-3 text-[var(--forge-text-muted)]" />
           </>
         )}
         <Link
           href={agentListHref}
-          className="hover:text-zinc-200 transition-colors"
+          className="hover:text-[var(--forge-text-primary)] transition-colors"
         >
           Agents
         </Link>
-        <ChevronRight className="h-3.5 w-3.5 text-zinc-600" />
-        <span className="text-zinc-200 font-mono truncate max-w-[140px] sm:max-w-xs">
+        <ChevronRight className="h-3 w-3 text-[var(--forge-text-muted)]" />
+        <span className="text-[var(--forge-text-secondary)] font-mono truncate max-w-[140px] sm:max-w-xs">
           {session.id.slice(0, 8)}
         </span>
       </div>
 
       {/* Main Title & Action Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="space-y-1.5 min-w-0">
-          <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-lg sm:text-xl font-semibold text-zinc-100 truncate tracking-tight">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="space-y-1 min-w-0">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h1 className="text-base sm:text-lg font-semibold text-[var(--forge-text-primary)] truncate tracking-tight">
               {session.objective}
             </h1>
-            <AgentStatusBadge status={session.status} size="md" />
+            <AgentStatusBadge status={session.status} size="sm" />
             {renderConnectionStatus()}
           </div>
 
-          <div className="flex items-center gap-4 text-xs text-zinc-400 font-mono">
+          <div className="flex items-center gap-4 text-xs text-[var(--forge-text-secondary)] font-mono">
             <span>
-              Elapsed: <strong className="text-zinc-200">{elapsedFormatted}</strong>
+              Elapsed: <strong className="text-[var(--forge-text-primary)]">{elapsedFormatted}</strong>
             </span>
             {session.model && (
               <span>
-                Model: <strong className="text-zinc-300">{session.model}</strong>
+                Model: <strong className="text-[var(--forge-text-primary)]">{session.model}</strong>
               </span>
             )}
             {session.current_step != null && (
               <span>
-                Step: <strong className="text-zinc-300">{session.current_step}</strong>
+                Step: <strong className="text-[var(--forge-text-primary)]">{session.current_step}</strong>
               </span>
             )}
           </div>
@@ -165,7 +165,7 @@ export function SessionHeader({
               type="button"
               disabled={isCancelling}
               onClick={() => setShowCancelModal(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 px-3 py-1.5 text-xs font-medium text-rose-300 transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded border border-[var(--forge-border)] bg-[var(--forge-surface-secondary)] hover:border-[var(--forge-danger-border)] hover:bg-[var(--forge-danger-surface)] hover:text-[var(--forge-danger)] px-2.5 py-1 text-xs font-medium text-[var(--forge-text-secondary)] transition-colors disabled:opacity-50"
             >
               <Ban className="h-3.5 w-3.5" />
               <span>Cancel Agent</span>
@@ -176,9 +176,9 @@ export function SessionHeader({
 
       {/* Reconnect notice banner when reconnecting */}
       {connectionStatus === 'reconnecting' && (
-        <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300 flex items-center gap-2">
+        <div className="mt-2.5 rounded border border-[var(--forge-warning-border)] bg-[var(--forge-warning-surface)] px-3 py-1.5 text-xs text-[var(--forge-warning)] flex items-center gap-2">
           <Radio className="h-3.5 w-3.5 animate-pulse" />
-          <span>Connection lost — reconnecting... The agent is continuing to execute on the worker.</span>
+          <span>Connection interrupted — resuming event stream... Execution continues on worker.</span>
         </div>
       )}
 

@@ -36,23 +36,23 @@ export function CompletionBanner({
     <div
       role="region"
       aria-label="Agent Execution Completed"
-      className="mb-6 rounded-xl border border-emerald-500/30 bg-gradient-to-b from-emerald-950/20 via-neutral-900 to-neutral-900/90 p-5 shadow-xl shadow-emerald-950/20"
+      className="mb-6 rounded-lg border border-[var(--forge-success-border)] bg-[var(--forge-surface)] p-4 shadow-xs"
     >
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-        <div className="flex items-start space-x-3.5">
-          <div className="rounded-lg bg-emerald-500/10 p-2 text-emerald-400 ring-1 ring-emerald-500/30">
-            <CheckCircle2 className="h-6 w-6" aria-hidden="true" />
+        <div className="flex items-start space-x-3">
+          <div className="rounded-md bg-[var(--forge-success-surface)] p-2 text-[var(--forge-success)] border border-[var(--forge-success-border)]">
+            <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
           </div>
           <div>
             <div className="flex items-center space-x-2">
-              <h3 className="text-base font-semibold text-white">
+              <h3 className="text-sm font-semibold text-[var(--forge-text-primary)]">
                 Task Execution Completed
               </h3>
-              <span className="rounded bg-emerald-500/20 px-2 py-0.5 text-xs font-semibold uppercase tracking-wider text-emerald-300 border border-emerald-500/30">
+              <span className="rounded bg-[var(--forge-success-surface)] px-1.5 py-0.2 text-[10px] font-semibold uppercase tracking-wider text-[var(--forge-success)] border border-[var(--forge-success-border)]">
                 Success
               </span>
             </div>
-            <p className="mt-1 text-xs text-neutral-300 max-w-2xl line-clamp-2">
+            <p className="mt-1 text-xs text-[var(--forge-text-secondary)] max-w-2xl line-clamp-2">
               {session.objective}
             </p>
           </div>
@@ -66,9 +66,9 @@ export function CompletionBanner({
                 <button
                   type="button"
                   onClick={onReviewChanges}
-                  className="inline-flex items-center space-x-1.5 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700 hover:text-white transition-colors"
+                  className="inline-flex items-center space-x-1.5 rounded border border-[var(--forge-border)] bg-[var(--forge-surface-secondary)] px-2.5 py-1.5 text-xs font-medium text-[var(--forge-text-primary)] hover:border-[var(--forge-border-highlight)] transition-colors"
                 >
-                  <FileCode className="h-3.5 w-3.5" />
+                  <FileCode className="h-3.5 w-3.5 text-[var(--forge-text-muted)]" />
                   <span>Changed Files ({changedFilesCount})</span>
                 </button>
               )}
@@ -76,7 +76,7 @@ export function CompletionBanner({
                 <button
                   type="button"
                   onClick={onOpenDiff}
-                  className="inline-flex items-center space-x-1.5 rounded-lg border border-emerald-500/40 bg-emerald-950/30 px-3 py-1.5 text-xs font-medium text-emerald-300 hover:bg-emerald-900/50 transition-colors"
+                  className="inline-flex items-center space-x-1.5 rounded border border-[var(--forge-border)] bg-[var(--forge-surface-secondary)] px-2.5 py-1.5 text-xs font-medium text-[var(--forge-success)] hover:border-[var(--forge-success-border)] transition-colors"
                 >
                   <GitCommit className="h-3.5 w-3.5" />
                   <span>Review Diff</span>
@@ -87,7 +87,7 @@ export function CompletionBanner({
 
           <Link
             href={newAgentHref}
-            className="inline-flex items-center space-x-1.5 rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 shadow-md transition-colors"
+            className="inline-flex items-center space-x-1.5 rounded bg-[var(--forge-accent)] px-3 py-1.5 text-xs font-semibold text-[var(--forge-accent-foreground)] hover:bg-[var(--forge-accent-hover)] transition-colors shadow-xs"
           >
             <RotateCcw className="h-3.5 w-3.5" />
             <span>Launch Another Agent</span>
@@ -96,37 +96,37 @@ export function CompletionBanner({
       </div>
 
       {/* Metrics Summary Grid */}
-      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4 rounded-lg border border-neutral-800 bg-neutral-950/60 p-3 text-xs">
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4 rounded border border-[var(--forge-border)] bg-[var(--forge-surface-secondary)] p-2.5 text-xs">
         <div>
-          <span className="text-neutral-500">Execution Time:</span>
-          <p className="font-mono font-medium text-neutral-200 mt-0.5">
+          <span className="text-[var(--forge-text-muted)]">Execution Time:</span>
+          <p className="font-mono font-medium text-[var(--forge-text-primary)] mt-0.5">
             {metrics ? `${metrics.wall_time_seconds.toFixed(1)}s` : '0.0s'}
           </p>
         </div>
         <div>
-          <span className="text-neutral-500">Steps / Tools:</span>
-          <p className="font-mono font-medium text-neutral-200 mt-0.5">
+          <span className="text-[var(--forge-text-muted)]">Steps / Tools:</span>
+          <p className="font-mono font-medium text-[var(--forge-text-primary)] mt-0.5">
             {session.current_step} steps / {metrics?.total_tool_calls || 0} tools
           </p>
         </div>
         <div>
-          <span className="text-neutral-500">Tokens:</span>
-          <p className="font-mono font-medium text-neutral-200 mt-0.5">
+          <span className="text-[var(--forge-text-muted)]">Tokens:</span>
+          <p className="font-mono font-medium text-[var(--forge-text-primary)] mt-0.5">
             {metrics ? formatTokens(metrics.total_input_tokens + metrics.total_output_tokens) : '0'}
           </p>
         </div>
         <div>
-          <span className="text-neutral-500">Estimated Cost:</span>
-          <p className="font-mono font-medium text-emerald-400 mt-0.5">
+          <span className="text-[var(--forge-text-muted)]">Estimated Cost:</span>
+          <p className="font-mono font-medium text-[var(--forge-success)] mt-0.5">
             {metrics ? formatCost(metrics.estimated_cost_usd) : '$0.00'}
           </p>
         </div>
       </div>
 
-      <div className="mt-3 flex justify-end">
+      <div className="mt-2.5 flex justify-end">
         <Link
           href={backHref}
-          className="inline-flex items-center space-x-1 text-xs text-neutral-400 hover:text-neutral-200 transition-colors"
+          className="inline-flex items-center space-x-1 text-xs text-[var(--forge-text-muted)] hover:text-[var(--forge-text-secondary)] transition-colors"
         >
           <span>Return to agent list</span>
           <ArrowRight className="h-3 w-3" />

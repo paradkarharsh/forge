@@ -59,21 +59,21 @@ export function FailureBanner({
     <div
       role="alert"
       aria-label={title}
-      className="mb-6 rounded-xl border border-rose-500/40 bg-gradient-to-b from-rose-950/20 via-neutral-900 to-neutral-900/90 p-5 shadow-xl shadow-rose-950/20"
+      className="mb-6 rounded-lg border border-[var(--forge-danger-border)] bg-[var(--forge-surface)] p-4 shadow-xs"
     >
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-        <div className="flex items-start space-x-3.5">
-          <div className="rounded-lg bg-rose-500/10 p-2 text-rose-400 ring-1 ring-rose-500/30">
-            <AlertOctagon className="h-6 w-6" aria-hidden="true" />
+        <div className="flex items-start space-x-3">
+          <div className="rounded-md bg-[var(--forge-danger-surface)] p-2 text-[var(--forge-danger)] border border-[var(--forge-danger-border)]">
+            <AlertOctagon className="h-5 w-5" aria-hidden="true" />
           </div>
           <div>
             <div className="flex items-center space-x-2">
-              <h3 className="text-base font-semibold text-white">{title}</h3>
-              <span className="rounded bg-rose-500/20 px-2 py-0.5 text-xs font-semibold uppercase tracking-wider text-rose-300 border border-rose-500/30">
+              <h3 className="text-sm font-semibold text-[var(--forge-text-primary)]">{title}</h3>
+              <span className="rounded bg-[var(--forge-danger-surface)] px-1.5 py-0.2 text-[10px] font-semibold uppercase tracking-wider text-[var(--forge-danger)] border border-[var(--forge-danger-border)]">
                 {statusLabel}
               </span>
             </div>
-            <p className="mt-1 text-xs text-rose-200/90 font-mono max-w-2xl">
+            <p className="mt-1 text-xs text-[var(--forge-danger)] font-mono max-w-2xl">
               {safeError}
             </p>
           </div>
@@ -85,16 +85,16 @@ export function FailureBanner({
             <button
               type="button"
               onClick={onReviewChanges}
-              className="inline-flex items-center space-x-1.5 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700 transition-colors"
+              className="inline-flex items-center space-x-1.5 rounded border border-[var(--forge-border)] bg-[var(--forge-surface-secondary)] px-2.5 py-1.5 text-xs font-medium text-[var(--forge-text-primary)] hover:border-[var(--forge-border-highlight)] transition-colors"
             >
-              <FileCode className="h-3.5 w-3.5" />
+              <FileCode className="h-3.5 w-3.5 text-[var(--forge-text-muted)]" />
               <span>Review Partial Changes ({changedFilesCount})</span>
             </button>
           )}
 
           <Link
             href={newAgentHref}
-            className="inline-flex items-center space-x-1.5 rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-rose-500 shadow-md transition-colors"
+            className="inline-flex items-center space-x-1.5 rounded bg-[var(--forge-accent)] px-3 py-1.5 text-xs font-semibold text-[var(--forge-accent-foreground)] hover:bg-[var(--forge-accent-hover)] shadow-xs transition-colors"
           >
             <RotateCcw className="h-3.5 w-3.5" />
             <span>Launch New Agent</span>
@@ -102,13 +102,13 @@ export function FailureBanner({
         </div>
       </div>
 
-      <div className="mt-4 flex items-center justify-between border-t border-neutral-800/80 pt-3 text-xs">
-        <span className="text-neutral-500">
-          Last recorded execution step: <span className="text-neutral-300 font-mono">Step {session.current_step}</span>
+      <div className="mt-3 flex items-center justify-between border-t border-[var(--forge-border)] pt-2.5 text-xs">
+        <span className="text-[var(--forge-text-muted)]">
+          Last recorded execution step: <span className="text-[var(--forge-text-primary)] font-mono">Step {session.current_step}</span>
         </span>
         <Link
           href={backHref}
-          className="inline-flex items-center space-x-1 text-neutral-400 hover:text-neutral-200 transition-colors"
+          className="inline-flex items-center space-x-1 text-[var(--forge-text-muted)] hover:text-[var(--forge-text-secondary)] transition-colors"
         >
           <span>Return to agent list</span>
           <ArrowRight className="h-3 w-3" />

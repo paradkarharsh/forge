@@ -17,11 +17,11 @@ export function ChangedFilesList({
 }: ChangedFilesListProps) {
   if (files.length === 0) {
     return (
-      <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-12 text-center">
-        <FileCode className="mx-auto h-10 w-10 text-neutral-600 mb-3" />
-        <h4 className="text-sm font-semibold text-neutral-300">No changes yet</h4>
-        <p className="mt-1 text-xs text-neutral-500 max-w-sm mx-auto">
-          Files created, modified, or deleted during agent execution will be listed here with live diffs.
+      <div className="rounded-lg border border-[var(--forge-border)] bg-[var(--forge-surface)] p-12 text-center">
+        <FileCode className="mx-auto h-8 w-8 text-[var(--forge-text-muted)] mb-3" />
+        <h4 className="text-xs font-semibold text-[var(--forge-text-primary)]">No changes recorded</h4>
+        <p className="mt-1 text-xs text-[var(--forge-text-secondary)] max-w-sm mx-auto">
+          Files created, modified, or deleted during agent execution will be listed here with unified diffs.
         </p>
       </div>
     );
@@ -31,23 +31,23 @@ export function ChangedFilesList({
   const totalDeletions = files.reduce((acc, f) => acc + f.deletions, 0);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* Header Summary */}
-      <div className="flex items-center justify-between rounded-lg border border-neutral-800 bg-neutral-900/60 px-4 py-3">
+      <div className="flex items-center justify-between rounded-md border border-[var(--forge-border)] bg-[var(--forge-surface-secondary)] px-4 py-2.5">
         <div className="flex items-center space-x-2">
-          <span className="text-xs font-semibold text-white">
+          <span className="text-xs font-semibold text-[var(--forge-text-primary)]">
             {files.length} {files.length === 1 ? 'file' : 'files'} changed
           </span>
         </div>
         <div className="flex items-center space-x-3 font-mono text-xs">
           {totalAdditions > 0 && (
-            <span className="flex items-center text-emerald-400">
+            <span className="flex items-center text-[var(--forge-success)]">
               <Plus className="h-3 w-3 mr-0.5" />
               {totalAdditions}
             </span>
           )}
           {totalDeletions > 0 && (
-            <span className="flex items-center text-rose-400">
+            <span className="flex items-center text-[var(--forge-danger)]">
               <Minus className="h-3 w-3 mr-0.5" />
               {totalDeletions}
             </span>
@@ -56,16 +56,16 @@ export function ChangedFilesList({
       </div>
 
       {/* Files List */}
-      <div className="divide-y divide-neutral-800/60 rounded-xl border border-neutral-800 bg-neutral-950/60 overflow-hidden">
+      <div className="divide-y divide-[var(--forge-border-subtle)] rounded-lg border border-[var(--forge-border)] bg-[var(--forge-surface)] overflow-hidden">
         {files.map((file) => {
           const isSelected = selectedPath === file.path;
 
           const opColor =
             file.operation === 'ADDED'
-              ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
+              ? 'text-[var(--forge-success)] bg-[var(--forge-success-surface)] border-[var(--forge-success-border)]'
               : file.operation === 'DELETED'
-              ? 'text-rose-400 bg-rose-500/10 border-rose-500/30'
-              : 'text-sky-400 bg-sky-500/10 border-sky-500/30';
+              ? 'text-[var(--forge-danger)] bg-[var(--forge-danger-surface)] border-[var(--forge-danger-border)]'
+              : 'text-[var(--forge-accent)] bg-[var(--forge-surface-secondary)] border-[var(--forge-border)]';
 
           const OpIcon =
             file.operation === 'ADDED'
@@ -79,41 +79,43 @@ export function ChangedFilesList({
               key={file.path}
               type="button"
               onClick={() => onSelectFile?.(file)}
-              className={`w-full flex items-center justify-between px-4 py-3.5 text-left transition-colors ${
+              className={`w-full flex items-center justify-between px-4 py-3 text-left transition-colors ${
                 isSelected
-                  ? 'bg-neutral-800/80 ring-1 ring-inset ring-neutral-700'
-                  : 'hover:bg-neutral-900/60'
+                  ? 'bg-[var(--forge-surface-secondary)] ring-1 ring-inset ring-[var(--forge-border)]'
+                  : 'hover:bg-[var(--forge-surface-secondary)]'
               }`}
             >
               <div className="flex items-center space-x-3 min-w-0 pr-4">
-                <OpIcon className="h-4 w-4 shrink-0 text-neutral-400" />
+                <OpIcon className="h-4 w-4 shrink-0 text-[var(--forge-text-muted)]" />
                 <div className="min-w-0">
-                  <p className="font-mono text-xs font-medium text-neutral-200 truncate">
+                  <p className="font-mono text-xs font-medium text-[var(--forge-text-primary)] truncate">
                     {file.path}
                   </p>
                   {file.toolName && (
-                    <p className="text-[11px] text-neutral-500">
-                      via <span className="font-mono text-neutral-400">{file.toolName}</span>
+                    <p className="text-[11px] text-[var(--forge-text-muted)]">
+                      via <span className="font-mono text-[var(--forge-text-secondary)]">{file.toolName}</span>
                     </p>
                   )}
                 </div>
               </div>
 
               <div className="flex items-center space-x-3 shrink-0">
-                <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider border ${opColor}`}>
+                <span
+                  className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider border ${opColor}`}
+                >
                   {file.operation}
                 </span>
 
-                <div className="flex items-center space-x-2 font-mono text-xs">
+                <div className="flex items-center space-x-1.5 font-mono text-xs w-16 justify-end">
                   {file.additions > 0 && (
-                    <span className="text-emerald-400">+{file.additions}</span>
+                    <span className="text-[var(--forge-success)]">+{file.additions}</span>
                   )}
                   {file.deletions > 0 && (
-                    <span className="text-rose-400">-{file.deletions}</span>
+                    <span className="text-[var(--forge-danger)]">-{file.deletions}</span>
                   )}
                 </div>
 
-                <ChevronRight className="h-4 w-4 text-neutral-600" />
+                <ChevronRight className="h-3.5 w-3.5 text-[var(--forge-text-muted)]" />
               </div>
             </button>
           );

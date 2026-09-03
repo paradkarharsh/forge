@@ -26,14 +26,14 @@ export function ToolCallItem({ toolCall }: ToolCallItemProps) {
     switch (risk) {
       case 'critical':
         return (
-          <span className="inline-flex items-center gap-1 text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/30">
+          <span className="inline-flex items-center gap-1 text-[10px] font-mono uppercase px-1.5 py-0.2 rounded bg-[var(--forge-danger-surface)] text-[var(--forge-danger)] border border-[var(--forge-danger-border)]">
             <Shield className="h-2.5 w-2.5" />
             <span>Critical</span>
           </span>
         );
       case 'high':
         return (
-          <span className="inline-flex items-center gap-1 text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30">
+          <span className="inline-flex items-center gap-1 text-[10px] font-mono uppercase px-1.5 py-0.2 rounded bg-[var(--forge-warning-surface)] text-[var(--forge-warning)] border border-[var(--forge-warning-border)]">
             <Shield className="h-2.5 w-2.5" />
             <span>High</span>
           </span>
@@ -41,7 +41,7 @@ export function ToolCallItem({ toolCall }: ToolCallItemProps) {
       case 'low':
       default:
         return (
-          <span className="inline-flex items-center gap-1 text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
+          <span className="inline-flex items-center gap-1 text-[10px] font-mono uppercase px-1.5 py-0.2 rounded bg-[var(--forge-surface-secondary)] text-[var(--forge-text-muted)] border border-[var(--forge-border)]">
             <span>Low</span>
           </span>
         );
@@ -50,30 +50,30 @@ export function ToolCallItem({ toolCall }: ToolCallItemProps) {
 
   const getToolIcon = () => {
     if (toolCall.tool_name.startsWith('terminal.')) {
-      return <Terminal className="h-4 w-4 text-emerald-400" />;
+      return <Terminal className="h-3.5 w-3.5 text-[var(--forge-success)]" />;
     }
     if (toolCall.tool_name.startsWith('file.')) {
-      return <Code2 className="h-4 w-4 text-blue-400" />;
+      return <Code2 className="h-3.5 w-3.5 text-[var(--forge-accent)]" />;
     }
-    return <Wrench className="h-4 w-4 text-indigo-400" />;
+    return <Wrench className="h-3.5 w-3.5 text-[var(--forge-text-secondary)]" />;
   };
 
   const getStatusIcon = () => {
     switch (toolCall.status) {
       case 'completed':
-        return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />;
+        return <CheckCircle2 className="h-3.5 w-3.5 text-[var(--forge-success)]" />;
       case 'failed':
       case 'rejected':
-        return <AlertCircle className="h-3.5 w-3.5 text-rose-400" />;
+        return <AlertCircle className="h-3.5 w-3.5 text-[var(--forge-danger)]" />;
       case 'running':
       case 'pending':
       default:
-        return <Clock className="h-3.5 w-3.5 text-zinc-400" />;
+        return <Clock className="h-3.5 w-3.5 text-[var(--forge-text-muted)]" />;
     }
   };
 
   return (
-    <div className="rounded-lg border border-zinc-800/80 bg-zinc-900/30 transition-colors hover:border-zinc-700/80 overflow-hidden">
+    <div className="rounded-lg border border-[var(--forge-border)] bg-[var(--forge-surface)] transition-colors hover:border-[var(--forge-border-highlight)] overflow-hidden">
       {/* Clickable Header */}
       <button
         type="button"
@@ -81,18 +81,18 @@ export function ToolCallItem({ toolCall }: ToolCallItemProps) {
         className="w-full flex items-center justify-between gap-3 p-3 text-left focus:outline-hidden"
       >
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-zinc-800/70 border border-zinc-700/50">
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-[var(--forge-surface-secondary)] border border-[var(--forge-border-subtle)]">
             {getToolIcon()}
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="font-mono text-xs font-semibold text-zinc-200 truncate">
+              <span className="font-mono text-xs font-semibold text-[var(--forge-text-primary)] truncate">
                 {toolCall.tool_name}
               </span>
               {getRiskBadge(toolCall.risk_level)}
             </div>
             {toolCall.duration_ms != null && (
-              <span className="text-[11px] font-mono text-zinc-500">
+              <span className="text-[10px] font-mono text-[var(--forge-text-muted)]">
                 {toolCall.duration_ms}ms
               </span>
             )}
@@ -100,18 +100,18 @@ export function ToolCallItem({ toolCall }: ToolCallItemProps) {
         </div>
 
         <div className="flex items-center gap-2.5 shrink-0">
-          <div className="flex items-center gap-1 text-[11px] font-mono text-zinc-400">
+          <div className="flex items-center gap-1 text-[11px] font-mono text-[var(--forge-text-secondary)]">
             {getStatusIcon()}
             <span className="capitalize">{toolCall.status}</span>
           </div>
-          <span className="text-[11px] font-mono text-zinc-500 hidden sm:inline">
+          <span className="text-[10px] font-mono text-[var(--forge-text-muted)] hidden sm:inline">
             {formatRelativeTime(toolCall.created_at)}
           </span>
-          <div className="text-zinc-500">
+          <div className="text-[var(--forge-text-muted)]">
             {isExpanded ? (
-              <ChevronDown className="h-4 w-4" />
+              <ChevronDown className="h-3.5 w-3.5" />
             ) : (
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight className="h-3.5 w-3.5" />
             )}
           </div>
         </div>
@@ -119,27 +119,27 @@ export function ToolCallItem({ toolCall }: ToolCallItemProps) {
 
       {/* Expandable Details Area */}
       {isExpanded && (
-        <div className="border-t border-zinc-800/80 bg-zinc-950/60 p-3.5 space-y-3 text-xs">
+        <div className="border-t border-[var(--forge-border)] bg-[var(--forge-surface-secondary)] p-3 space-y-2.5 text-xs">
           {/* Arguments */}
           <div>
-            <div className="text-[11px] font-medium text-zinc-400 uppercase tracking-wider mb-1.5">
+            <div className="text-[10px] font-medium text-[var(--forge-text-muted)] uppercase tracking-wider mb-1">
               Arguments
             </div>
-            <pre className="font-mono text-[11px] leading-relaxed text-zinc-300 bg-zinc-900 border border-zinc-800 rounded-md p-2.5 overflow-x-auto">
+            <pre className="font-mono text-[11px] leading-relaxed text-[var(--forge-text-secondary)] bg-[var(--forge-surface)] border border-[var(--forge-border)] rounded p-2 overflow-x-auto">
               {JSON.stringify(toolCall.arguments, null, 2)}
             </pre>
           </div>
 
-          {/* Output (External Untrusted Data Display) */}
+          {/* Output */}
           {toolCall.output && (
             <div>
-              <div className="flex items-center justify-between text-[11px] font-medium text-zinc-400 uppercase tracking-wider mb-1.5">
+              <div className="flex items-center justify-between text-[10px] font-medium text-[var(--forge-text-muted)] uppercase tracking-wider mb-1">
                 <span>Output</span>
-                <span className="text-[10px] text-zinc-500 font-normal lowercase">
-                  (external untrusted output)
+                <span className="text-[10px] text-[var(--forge-text-muted)] font-normal lowercase">
+                  (untrusted external data)
                 </span>
               </div>
-              <pre className="font-mono text-[11px] leading-relaxed text-zinc-200 bg-black/60 border border-zinc-800/90 rounded-md p-2.5 overflow-x-auto max-h-60">
+              <pre className="font-mono text-[11px] leading-relaxed text-[var(--forge-text-primary)] bg-[var(--forge-surface)] border border-[var(--forge-border)] rounded p-2 overflow-x-auto max-h-60">
                 {toolCall.output}
               </pre>
             </div>
@@ -148,10 +148,10 @@ export function ToolCallItem({ toolCall }: ToolCallItemProps) {
           {/* Error Message */}
           {toolCall.error_message && (
             <div>
-              <div className="text-[11px] font-medium text-rose-400 uppercase tracking-wider mb-1.5">
+              <div className="text-[10px] font-medium text-[var(--forge-danger)] uppercase tracking-wider mb-1">
                 Error
               </div>
-              <div className="font-mono text-[11px] text-rose-300 bg-rose-950/30 border border-rose-500/30 rounded-md p-2.5">
+              <div className="font-mono text-[11px] text-[var(--forge-danger)] bg-[var(--forge-danger-surface)] border border-[var(--forge-danger-border)] rounded p-2">
                 {toolCall.error_message}
               </div>
             </div>

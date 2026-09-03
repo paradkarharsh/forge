@@ -36,27 +36,27 @@ export function AgentCard({
   return (
     <Link
       href={href}
-      className="group block rounded-xl border border-zinc-800/80 bg-zinc-950/40 p-4 transition-all duration-150 hover:border-zinc-700 hover:bg-zinc-900/40 shadow-xs"
+      className="group block rounded-lg border border-[var(--forge-border)] bg-[var(--forge-surface)] p-3.5 transition-colors hover:border-[var(--forge-border-highlight)] hover:bg-[var(--forge-surface-secondary)] shadow-xs"
     >
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="space-y-1.5 min-w-0 flex-1">
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <h3 className="text-sm sm:text-base font-semibold text-zinc-200 group-hover:text-indigo-300 transition-colors truncate">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+        <div className="space-y-1 min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="text-xs sm:text-sm font-semibold text-[var(--forge-text-primary)] group-hover:text-[var(--forge-accent)] transition-colors truncate">
               {session.objective}
             </h3>
             <AgentStatusBadge status={session.status} size="sm" />
           </div>
 
-          <div className="flex items-center gap-3 text-xs text-zinc-400 font-mono flex-wrap">
+          <div className="flex items-center gap-3 text-[11px] text-[var(--forge-text-muted)] font-mono flex-wrap">
             {targetRepoId && (
-              <span className="inline-flex items-center gap-1 text-zinc-400">
-                <GitBranch className="h-3 w-3 text-zinc-500" />
+              <span className="inline-flex items-center gap-1">
+                <GitBranch className="h-3 w-3" />
                 <span>Repo {targetRepoId.slice(0, 8)}</span>
               </span>
             )}
 
             <span className="inline-flex items-center gap-1">
-              <Clock className="h-3 w-3 text-zinc-500" />
+              <Clock className="h-3 w-3" />
               <span>{formatRelativeTime(session.created_at)}</span>
             </span>
 
@@ -65,33 +65,33 @@ export function AgentCard({
             )}
 
             {isActive && (
-              <span className="text-indigo-400 font-medium animate-pulse">
-                Active execution
+              <span className="text-[var(--forge-success)] font-medium">
+                Active
               </span>
             )}
           </div>
         </div>
 
         {/* Right side stats */}
-        <div className="flex items-center gap-4 text-xs font-mono text-zinc-400 shrink-0 self-end sm:self-center">
+        <div className="flex items-center gap-4 text-xs font-mono text-[var(--forge-text-secondary)] shrink-0 self-end sm:self-center">
           <div className="flex items-center gap-3">
             <span
               className="inline-flex items-center gap-1"
               title="Total LLM calls"
             >
-              <Cpu className="h-3.5 w-3.5 text-zinc-500" />
+              <Cpu className="h-3.5 w-3.5 text-[var(--forge-text-muted)]" />
               <span>{session.metrics.total_llm_calls}</span>
             </span>
             <span
               className="inline-flex items-center gap-1"
               title="Total tool calls"
             >
-              <Wrench className="h-3.5 w-3.5 text-zinc-500" />
+              <Wrench className="h-3.5 w-3.5 text-[var(--forge-text-muted)]" />
               <span>{session.metrics.total_tool_calls}</span>
             </span>
           </div>
 
-          <ChevronRight className="h-4 w-4 text-zinc-600 group-hover:text-zinc-300 group-hover:translate-x-0.5 transition-all" />
+          <ChevronRight className="h-4 w-4 text-[var(--forge-text-muted)] group-hover:text-[var(--forge-text-primary)] group-hover:translate-x-0.5 transition-all" />
         </div>
       </div>
     </Link>

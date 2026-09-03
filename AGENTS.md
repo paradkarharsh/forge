@@ -133,3 +133,15 @@ Feature Pack 8 Agentic Development Engine is implemented in `services/api`:
   - Routes: `/workspaces/[workspaceId]/agents`, `/workspaces/[workspaceId]/agents/new`, `/workspaces/[workspaceId]/agents/[agentId]`, and repository-scoped variants.
   - Quality and verification: 15 Vitest tests passing across 4 test suites, strict `tsc --noEmit` clean, ESLint clean (`--max-warnings=0`), production Next.js build verified with SSG, 535 backend Pytest tests passing (0 failures), ruff clean.
 
+Canonical Visual System & Web Redesign is implemented in `apps/web` and `packages/design-tokens`:
+
+- **Design Philosophy:** "Precision over decoration." Zero vibecoded purple/blue neon gradients, zero decorative AI sparkles, and zero generic marketing templates.
+- **Brand Identity:** Minimal rounded-bar "F" vector emblem (vertical pillar, top bar, middle bar) and geometric "FORGE" wordmark with optional tagline "BUILD BETTER. SHIP FASTER." in warm ivory/champagne.
+- **Dual-Theme Design System:** Complete semantic tokens in `packages/design-tokens/src/tokens.css` with dark theme (near-black charcoal `#080A0A`, surfaces `#0D1010` to `#151918`, subtle borders `#1F2423`, warm white text `#EDEDEC`) and light theme (warm ivory/cream `#FAF8F5`, surfaces `#FFFFFF`/`#F3EFEA`, borders `#E5E0D8`, charcoal text `#121515`).
+- **Restrained Status Taxonomy:** Muted olive green (`#78B18A`) for running/completed/success, muted amber (`#E5A952`) for approval/warning, restrained red (`#D66A6A`) for failed/error, and warm ivory (`#F4EFE6`) for accents.
+- **Transformed Landing Page (`/`):** High-aesthetic, responsive developer landing page matching Reference 1 with sticky blurred navbar, large confident hero, interactive realistic Agent Workspace preview (toggleable activity feed, changed files, and syntax-aware diffs), social proof metrics, asymmetric architectural capability showcases, 5-step engineering lifecycle, final CTA, and clean footer.
+- **Authenticated Developer Workspace Shell (`AppShell`):** Collapsible sidebar with Forge logo, workspace selector, navigation links (Dashboard, Agents, Repositories, Memory, Settings), active agents badge, user profile, and theme toggle; top command bar with breadcrumbs, command palette shortcut (`⌘K`), backend gateway connectivity indicator, and quick `+ New Agent` action.
+- **Workspace Dashboard (`/workspaces/[id]`):** Prioritizes developer-critical telemetry (active agents, pending approvals, completed tasks, AST repository index status, pending approval banners, recent activity).
+- **Security & Quality:** Strict zero `dangerouslySetInnerHTML`, pure React text nodes for diffs/tool outputs, WCAG 2.1 AA accessibility, 29 Vitest tests passing across 9 test suites (including visual system validation), strict `tsc --noEmit` clean, ESLint clean (`--max-warnings=0`), production Next.js build verified with SSG (12 static pages), 535 backend Pytest tests passing (0 failures), and Ruff clean. Permanent design documentation in `docs/design/FORGE-DESIGN-SYSTEM.md`.
+
+
