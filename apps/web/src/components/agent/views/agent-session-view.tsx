@@ -197,7 +197,7 @@ export function AgentSessionView({
         )}
 
         {/* Loading State */}
-        {isLoading && !session ? (
+        {isLoading && !session && agentId !== 'default' ? (
           <div className="flex-1 flex flex-col items-center justify-center p-8 space-y-3 text-center">
             <Loader2 className="h-7 w-7 text-[var(--forge-accent)] animate-spin" />
             <div className="space-y-0.5">
@@ -209,7 +209,7 @@ export function AgentSessionView({
               </p>
             </div>
           </div>
-        ) : error && !session ? (
+        ) : error && !session && agentId !== 'default' ? (
           <div className="flex-1 max-w-md mx-auto flex flex-col items-center justify-center p-8 space-y-3 text-center">
             <div className="flex h-10 w-10 items-center justify-center rounded bg-[var(--forge-danger-surface)] text-[var(--forge-danger)] border border-[var(--forge-danger-border)]">
               <AlertCircle className="h-5 w-5" />

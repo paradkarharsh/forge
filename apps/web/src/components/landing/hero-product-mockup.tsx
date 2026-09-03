@@ -17,6 +17,7 @@ import {
   Play,
   Settings,
 } from 'lucide-react';
+import { ForgeLogoIcon } from '../brand/forge-logo';
 import { IsometricCube } from '../brand/isometric-cube';
 
 export function HeroProductMockup() {
@@ -51,9 +52,9 @@ export function HeroProductMockup() {
           {/* Left Mini Icon Rail */}
           <div className="w-11 border-r border-[var(--forge-border)] bg-[var(--forge-surface)] p-2 flex flex-col items-center justify-between shrink-0">
             <div className="space-y-3 flex flex-col items-center">
-              {/* Mini F */}
-              <div className="h-6 w-6 rounded bg-[var(--forge-surface-secondary)] border border-[var(--forge-border)] flex items-center justify-center text-[var(--forge-accent)] font-black text-xs">
-                F
+              {/* Mini Forge Logo */}
+              <div className="h-6 w-6 rounded bg-[var(--forge-surface-secondary)] border border-[var(--forge-border)] flex items-center justify-center text-[var(--forge-accent)] p-0.5">
+                <ForgeLogoIcon size={14} />
               </div>
               <Home className="h-3.5 w-3.5 text-[var(--forge-text-muted)]" />
               <FolderGit2 className="h-3.5 w-3.5 text-[var(--forge-text-muted)]" />

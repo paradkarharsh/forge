@@ -101,7 +101,7 @@ export default function HomePage() {
               <br />
               Ship faster.
               <br />
-              <span className="text-[#E5A952]">With AI agents.</span>
+              <span className="text-[var(--forge-champagne)]">With AI agents.</span>
             </h1>
 
             {/* Short Supporting Paragraph */}
@@ -328,7 +328,28 @@ export default function HomePage() {
       </section>
 
       {/* ------------------------------------------------ */}
-      {/* 6. CLEAN FOOTER */}
+      {/* 6. FINAL CTA ("Build the future of software.") */}
+      {/* ------------------------------------------------ */}
+      <section className="py-20 px-4 sm:px-8 max-w-4xl mx-auto w-full text-center space-y-6">
+        <h2 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-[var(--forge-text-primary)] leading-tight">
+          Build the future of software.
+        </h2>
+        <p className="text-xs sm:text-sm text-[var(--forge-text-secondary)] max-w-lg mx-auto leading-relaxed">
+          Start building production-ready software with autonomous AI agents that understand your codebase and respect your controls.
+        </p>
+        <div className="pt-2">
+          <Link
+            href={`/workspaces/${defaultWorkspaceId}/agents/new`}
+            className="inline-flex items-center gap-2 rounded bg-[var(--forge-accent)] hover:bg-[var(--forge-accent-hover)] px-6 py-3 text-xs sm:text-sm font-semibold text-[var(--forge-accent-foreground)] shadow-sm transition-colors"
+          >
+            <span>Start building for free</span>
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+      </section>
+
+      {/* ------------------------------------------------ */}
+      {/* 7. CLEAN FOOTER */}
       {/* ------------------------------------------------ */}
       <footer className="border-t border-[var(--forge-border)] bg-[var(--forge-surface)] py-8 px-4 sm:px-8 mt-auto text-xs text-[var(--forge-text-muted)]">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">

@@ -23,6 +23,7 @@
   --forge-accent-hover: #faf7f2;
   --forge-accent-foreground: #0d1010;
   --forge-accent-subtle: rgba(244, 239, 230, 0.08);
+  --forge-champagne: #e6b566;
 
   /* Status: Muted Olive / Restrained Green (Dark) */
   --forge-success: #78b18a;
@@ -80,6 +81,7 @@
   --forge-accent-hover: #2c3130;
   --forge-accent-foreground: #f4efe6;
   --forge-accent-subtle: rgba(28, 32, 31, 0.05);
+  --forge-champagne: #9e7428;
 
   /* Status: Muted Olive Green (Light) */
   --forge-success: #28663c;
