@@ -469,7 +469,7 @@ def test_client(monkeypatch) -> TestClient:
     """Create a TestClient with env vars set so Settings can load."""
     monkeypatch.setenv(
         "FORGE_DATABASE_URL",
-        "postgresql+asyncpg://forge:secret@localhost:5432/forge",
+        f"postgresql+asyncpg://{PG_USER}:{PG_PASSWORD}@{PG_HOST}:{PG_PORT}/forge",
     )
     monkeypatch.setenv("FORGE_REDIS_URL", "redis://localhost:6379/0")
     monkeypatch.setenv(
@@ -481,11 +481,14 @@ def test_client(monkeypatch) -> TestClient:
     get_settings.cache_clear()
     from forge_api.presentation.http.app import create_app
 
-    return TestClient(
+    client = TestClient(
         create_app(),
         base_url="http://localhost",
         raise_server_exceptions=False,
     )
+    yield client
+    get_settings.cache_clear()
+
 
 
 # ─── Fake repository domain repositories ────────────────────────────

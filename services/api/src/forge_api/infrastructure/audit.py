@@ -22,11 +22,16 @@ class AuditLogger:
 
     def record(self, event: AuditEvent) -> None:
         """Add an audit event to the current unit-of-work."""
+        event_str = event.event.value if hasattr(event.event, "value") else str(event.event)
+        # Agent execution sessions are distinct from auth HTTP sessions (sessions.id).
+        # Avoid violating the foreign key constraint on sessions.id for agent events.
+        db_session_id = None if event_str.startswith("agent.") else event.session_id
+
         self._db.add(
             AuditEventModel(
-                event=event.event,
+                event=event_str,
                 user_id=event.user_id,
-                session_id=event.session_id,
+                session_id=db_session_id,
                 ip_address=event.ip_address,
                 user_agent=event.user_agent,
                 reason=event.reason,

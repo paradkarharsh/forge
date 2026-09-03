@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
 from typing import Any, Protocol, runtime_checkable
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from forge_api.domain.errors import DomainError
 from forge_api.domain.tool import RiskLevel
@@ -149,6 +149,22 @@ class ExecutionMetrics:
     estimated_cost_usd: float = 0.0
     total_llm_retries: int = 0
 
+    @property
+    def prompt_tokens(self) -> int:
+        return self.total_input_tokens
+
+    @property
+    def completion_tokens(self) -> int:
+        return self.total_output_tokens
+
+    @property
+    def total_tokens(self) -> int:
+        return self.total_input_tokens + self.total_output_tokens
+
+    @property
+    def estimated_cost(self) -> float:
+        return self.estimated_cost_usd
+
 
 # ─── Domain Records ───────────────────────────────────────────────────
 
@@ -251,6 +267,12 @@ class AgentEvent:
     session_id: UUID
     timestamp: datetime
     data: dict[str, Any] = field(default_factory=dict)
+    id: UUID = field(default_factory=uuid4)
+
+    @property
+    def payload(self) -> dict[str, Any]:
+        """Convenience property matching data payload for serializer compatibility."""
+        return self.data
 
 
 @runtime_checkable

@@ -101,3 +101,35 @@ Feature Pack 6 context & memory engine is implemented in `services/api`:
 - Post-index invalidation: `RepositoryIndexService._complete` marks stale only memories whose `source_file_path` is in the changed-path set; a memory failure never fails indexing.
 - API: 6 memory endpoints under `/v1/workspaces/{wid}/memories`, POST `/v1/context/assemble`, GET/POST/DELETE `/v1/context/conversation/{conversation_id}`; new audit events `memory.created/updated/deleted/archived/stale_marked/searched` and `context.assembled`.
 - Live-infrastructure validation (2026-08-11): Docker PostgreSQL 16 + pgvector 0.8.6 + Redis 7.4; Alembic 0006 upgrade/downgrade/re-upgrade verified; **258 tests passing** with zero skips; `ruff check .` clean; memory CRUD/authorization/user-isolation/context-assembly/repository-intelligence/Redis-conversation/reindex-invalidation verified end-to-end. Three genuine defects fixed during validation: SQL adapter string→enum conversion, JSONB tag `@>` operator, and `update()` lazy-reload after flush.
+
+Feature Pack 7 LLM gateway is implemented in `services/api`:
+
+- Provider-agnostic domain interfaces (`LLMClient`, `ModelRegistry`, `UsageTracker`, `ConversationService`).
+- Migration `0007_llm_gateway` adds `conversations`, `messages`, and `usage_events` tables.
+- Robust provider resilience, token estimation, cost tracking, streaming responses, and prompt versioning.
+
+Feature Pack 8 Agentic Development Engine is implemented in `services/api`:
+
+- **FP8-A (Domain & Persistence Schema):** Domain models (`AgentSessionRecord`, `AgentStepRecord`, `AgentToolCallRecord`, `AgentApprovalRecord`), lifecycle state machine, immutable limits/metrics, SHA-256 canonical argument hashing (`compute_arguments_hash`), and Alembic migration `0008_agent_engine` (`agent_sessions`, `agent_steps`, `agent_tool_calls`, `agent_approvals`).
+- **FP8-B (Tool System & Policy Engine):** Exactly 12 provider-neutral tools (7 read, 3 write, 1 git, 1 terminal), deterministic `PolicyEngine` with workspace RBAC and risk evaluation (`LOW`, `HIGH`, `CRITICAL`), approval requirement lifecycle, untrusted path containment, and pattern-based secret redaction (`redact_secrets`).
+- **FP8-C (Agent Worker Runtime & Orchestration):** Bounded `AgentOrchestrator` execution loop with state suspension upon requiring human approval, context injection (FP6 memory + repository context), LLM Gateway tool calling (FP7), durable job execution via existing sync job infrastructure (`AGENT_EXECUTE`, `AGENT_RESUME`), `RedisAgentCoordinator` fast-path notification and cancellation signaling, and hard execution boundary enforcement.
+- **FP8-D (Persistence Adapters, Agent API, Approval API, and SSE Streaming):**
+  - Concrete persistence adapters: `SqlAgentSessionRepository`, `SqlAgentStepRepository`, `SqlAgentToolCallRepository`, `SqlAgentApprovalRepository` (row-level `with_for_update` for atomic decision transitions and idempotent retries), and `SqlAgentJobQueue` (`with_for_update(skip_locked=True)`).
+  - Application boundary `AgentService` enforcing BOLA/IDOR isolation, workspace RBAC, cryptographic argument hash verification (`hmac.compare_digest`), worker notification, and lifecycle events.
+  - HTTP presentation router `agent_router` exposing all 11 endpoints under `/v1/workspaces/{workspace_id}/agents`: create, list, get session, run, cancel, steps, tool-calls, approvals, grant, deny, and events.
+  - Real-time SSE event streaming (`/events`): bounded Redis replay buffer (`forge:agent:event_log:{session_id}`, 500 events max, 1h TTL), `Last-Event-ID` resume filtering, deduplication between replay and live Pub/Sub (`forge:agent:events:{session_id}`), secret redaction on all payloads, periodic keepalive heartbeat comment (`: ping\n\n`), and clean termination on terminal status.
+- **FP8-E (Audit, Usage, Retention & Production Hardening):**
+  - All 21 lifecycle audit events registered in `AuditEventType` and emitted across session creation, run, planning, running, steps, tool calls, approvals, resumption, cancellation, timeout, and limits.
+  - Secret and reasoning scrubbing: all audit payloads filtered via `redact_secrets()` and stripped of sensitive keys (`chain_of_thought`, `reasoning`, `secret`, `password`, `token`, `api_key`).
+  - Durable usage and cost accounting: `agent_session_id` foreign key on `usage_events`, provider-neutral tracking of LLM counts, retries (`total_llm_retries`), tool calls, token usage, cost, and duration surviving suspension/resumption without double-counting.
+  - Strict limit boundary enforcement: wall time (900s), LLM calls (30, 31st rejected), tool calls (50, 51st rejected in both orchestration loop and resume path), output truncation (64KB cap with notice), and observation cap (8KB).
+  - Operational maintenance and recovery: `AgentMaintenanceService` providing conservative stale session recovery with Redis distributed lock verification, approval expiration recovery, and 30-day retention cleanup of terminal sessions (active sessions strictly preserved).
+  - Migration `0009_agent_hardening`: adds `last_heartbeat_at`, `worker_id`, retention/heartbeat indexes to `agent_sessions`, and `agent_session_id` to `usage_events`.
+  - Full suite: **516 tests passing**, 20 skipped (live Docker services), 0 failures; `ruff check .` clean; app startup verified.
+- **FP8-F (Prompt 1/2: Agent Workspace, Creation Flow, API Integration & Session UI):**
+  - Typed client integration in `apps/web/src/lib/api`: strict TypeScript types matching FP8 models, typed REST client for all 8 agent operations, and resilient SSE client with `: ping` watchdog, deduplication, and exponential backoff reconnects.
+  - Reactive hooks: `useAgentSession`, `useAgentEvents`, `useElapsedTime`.
+  - Component library: 9-state status badge with animated glow, filterable agent list/table, validated agent creation form with character counting and expandable limit configuration, interactive session header, unified chronological activity timeline with filter tabs, tool invocation cards with risk badges (`LOW`/`HIGH`/`CRITICAL`), and telemetry sidebar (tokens, cost USD, limits).
+  - Routes: `/workspaces/[workspaceId]/agents`, `/workspaces/[workspaceId]/agents/new`, `/workspaces/[workspaceId]/agents/[agentId]`, and repository-scoped variants.
+  - Quality and verification: 15 Vitest tests passing across 4 test suites, strict `tsc --noEmit` clean, ESLint clean (`--max-warnings=0`), production Next.js build verified with SSG, 535 backend Pytest tests passing (0 failures), ruff clean.
+

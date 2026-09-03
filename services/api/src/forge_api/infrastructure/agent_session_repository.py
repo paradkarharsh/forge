@@ -18,9 +18,24 @@ from forge_api.infrastructure.database.models import AgentSessionModel
 
 def _to_record(model: AgentSessionModel) -> AgentSessionRecord:
     limits = AgentLimits(**model.limits) if isinstance(model.limits, dict) else AgentLimits()
-    metrics = (
-        ExecutionMetrics(**model.metrics) if isinstance(model.metrics, dict) else ExecutionMetrics()
-    )
+    if isinstance(model.metrics, dict):
+        met = model.metrics
+        metrics = ExecutionMetrics(
+            total_llm_calls=met.get("total_llm_calls", 0),
+            total_tool_calls=met.get("total_tool_calls", 0),
+            total_input_tokens=met.get("total_input_tokens", met.get("prompt_tokens", 0)),
+            total_output_tokens=met.get(
+                "total_output_tokens", met.get("completion_tokens", 0)
+            ),
+            wall_time_seconds=met.get("wall_time_seconds", 0.0),
+            estimated_cost_usd=met.get(
+                "estimated_cost_usd", met.get("estimated_cost", 0.0)
+            ),
+            total_llm_retries=met.get("total_llm_retries", 0),
+        )
+
+    else:
+        metrics = ExecutionMetrics()
     return AgentSessionRecord(
         id=model.id,
         workspace_id=model.workspace_id,

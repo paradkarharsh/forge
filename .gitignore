@@ -19,3 +19,5 @@ target/
 apps/desktop/src-tauri/target/
 *.log
 .DS_Store
+*.tsbuildinfo
+next-env.d.ts

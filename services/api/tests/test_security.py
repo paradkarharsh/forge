@@ -25,7 +25,9 @@ def settings(monkeypatch):
         "test-secret-that-is-at-least-32-characters-for-security-purposes",
     )
     get_settings.cache_clear()
-    return get_settings()
+    yield get_settings()
+    get_settings.cache_clear()
+
 
 
 class TestJwtTokenProvider:
